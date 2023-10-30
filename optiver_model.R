@@ -1,6 +1,43 @@
 library(data.table)
 library(lightgbm)
 library(xgboost)
+library(tidyverse)
+library(glmnet)
+library(forecast)
+
+
+data0<-read_csv("/Users/bigmac/Desktop/MDA woohoo/projet ML prévision/optiver-trading-at-the-close/train.csv", col_names =TRUE)
+####commande de base associée: 
+#data0<-read.table("https://www.math.u-psud.fr/~goude/Materials/Data/data_conso_hebdo0.txt", header =TRUE)
+data0$stock_id<-as.factor(data0$stock_id)
+summary(data0)
+
+data_stock1 <- subset(data0, stock_id == 1)
+
+data_stock1_day1 <- subset(data_stock1, date_id == 1)
+data_stock1_day2 <- subset(data_stock1, date_id == 2)
+data_stock1_day3 <- subset(data_stock1, date_id == 3)
+data_stock1_day4 <- subset(data_stock1, date_id == 4)
+
+par(mfrow = c(2, 2))
+plot(data_stock1_day1$seconds_in_bucket, data_stock1_day1$target,type='l')
+plot(data_stock1_day2$seconds_in_bucket, data_stock1_day2$target,type='l')
+plot(data_stock1_day3$seconds_in_bucket, data_stock1_day3$target,type='l')
+plot(data_stock1_day4$seconds_in_bucket, data_stock1_day4$target,type='l')
+
+#par(mfrow = c(1, 1))
+#columns_plot <- c(15, )
+#matplot(data_stock1_day1, type = "l", lty = 1, col = columns_plot, xlab = "X-axis label", ylab = "Y-axis label")
+#legend("topright", legend = colnames(data_stock1_day1[, columns_plot]), col = columns_plot, lty = 1
+
+
+
+data_stock2 <- subset(data0, stock_id == 2)
+
+data_stock2_day1 <- subset(data_stock2, date_id == 1)
+data_stock2_day2 <- subset(data_stock2, date_id == 2)
+data_stock2_day3 <- subset(data_stock2, date_id == 3)
+data_stock2_day4 <- subset(data_stock2, date_id == 4)
 
 # Function to generate features
 generate_features <- function(df) {
@@ -72,15 +109,37 @@ nrow(X)
 index_train <- 1:as.integer(nrow(X)*0.8)
 index_val <- as.integer(nrow(X)*0.8):nrow(X)
 
+
+
 model_lgbm <- lgb.train(objective = 'regression_l1', data = lgb.Dataset(data = X[index_train,], label = Y[index_train]),
                    valids = list(val_data = lgb.Dataset(data = X[index_val,], label = Y[index_val])),
-                   nrounds = 500,
+                   nrounds = 50,
                    early_stopping_rounds = 100,
                    verbose = 10)
 
 
 
-model_xgb <- xgboost(data = X, label = Y, objective = 'reg:absoluteerror', nrounds=500)
+model_xgb <- xgboost(data = X, label = Y, objective = 'reg:absoluteerror', nrounds=50)
+
+
+data_raw<-read_csv("/Users/bigmac/Desktop/MDA woohoo/projet ML prévision/optiver-trading-at-the-close/train.csv", col_names =TRUE)
+data_processed <- generate_features(data_raw)
+features <- colnames(data_processed)
+data_processed$target <- data_raw$target
+formula <- as.formula(paste("target ~", paste(features, collapse = " + ")))
+linear_model <- lm(formula, data=data_processed)
+summary(linear_model)
+
+
+gl_model <- glmnet(x = as.matrix(X), y = Y, alpha = 1)
+
+
+target_ts <- ts(data_raw$target, frequency = 55)
+arima_model <- auto.arima(target_ts)
+summary(arima_model)
+
+
+
 
 # 
 # train <- function(model_dict, modelname) {
