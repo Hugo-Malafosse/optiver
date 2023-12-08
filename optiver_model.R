@@ -4,7 +4,10 @@ library(xgboost)
 library(tidyverse)
 library(glmnet)
 library(forecast)
-
+library(mgcv)
+library(mgcViz)
+library(gridExtra)
+library(yarrr)
 
 data0<-read_csv("/Users/bigmac/Desktop/MDA woohoo/projet ML prévision/optiver-trading-at-the-close/train.csv", col_names =TRUE)
 ####commande de base associée: 
@@ -119,6 +122,12 @@ model_lgbm <- lgb.train(objective = 'regression_l1', data = lgb.Dataset(data = X
 
 
 
+feature_importance <- lgb.importance(model = model_lgbm)
+feature_importance
+plot(feature_importance)
+
+
+
 model_xgb <- xgboost(data = X, label = Y, objective = 'reg:absoluteerror', nrounds=50)
 
 
@@ -132,13 +141,25 @@ summary(linear_model)
 
 
 gl_model <- glmnet(x = as.matrix(X), y = Y, alpha = 1)
-
+yhyhjj
 
 target_ts <- ts(data_raw$target, frequency = 55)
 arima_model <- auto.arima(target_ts)
 summary(arima_model)
 
 
+rmse<-function(eps)
+{
+  return(round(sqrt(mean(eps^2,na.rm=TRUE)),digits=0))
+}
+
+mape<-function(y,ychap)
+{
+  return(round(100*mean(abs(y-ychap)/abs(y)),digits=2))
+}
+
+g0 <- gam(data_raw$target~s(data_raw$wap, k=5, bs="cr"), data=data_raw)
+summary(g0)
 
 
 # 
