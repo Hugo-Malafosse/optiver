@@ -831,6 +831,7 @@ print(mean(difference))
 
 
 
+
 # Initialisation d'une liste pour stocker les modèles
 models_new_out <- list()
 
@@ -1190,4 +1191,203 @@ ggplot(combined_data, aes(x = target, fill = group)) +
                                "Plus de 2 outliers" = "red")) +
   theme_minimal() +
   theme(legend.title = element_blank())
+
+
+
+
+
+
+ajout_detect_count_outliers <- function(data_frame) {
+  # Créer un dataframe pour stocker les indicateurs d'outliers
+  outliers <- data_frame
+  
+  # Parcourir chaque colonne du dataframe
+  for(col_name in names(data_frame)) {
+    # Vérifier si la colonne est numérique
+    if(is.numeric(data_frame[[col_name]])) {
+      # Calculer Q1, Q3 et IQR
+      Q1 <- quantile(data_frame[[col_name]], 0.25, na.rm = TRUE)
+      Q3 <- quantile(data_frame[[col_name]], 0.75, na.rm = TRUE)
+      IQR <- Q3 - Q1
+      
+      # Calculer les bornes pour déterminer les outliers
+      lower_bound <- Q1 - 1.5 * IQR
+      upper_bound <- Q3 + 1.5 * IQR
+      
+      # Marquer les valeurs en dehors des bornes comme TRUE (outlier)
+      outliers[[col_name]] <- data_frame[[col_name]] < lower_bound | data_frame[[col_name]] > upper_bound
+    } else {
+      # Pour les colonnes non numériques, marquer toutes les valeurs comme FALSE
+      outliers[[col_name]] <- FALSE
+    }
+  }
+  
+  # Convertir les valeurs logiques en valeurs numériques pour le calcul
+  numeric_outliers <- as.data.frame(lapply(outliers, as.integer))
+  
+  # Ajouter une colonne 'has_outlier' pour marquer les lignes avec au moins un outlier
+  data_frame$has_outlier <- apply(numeric_outliers, 1, function(row) any(row == 1))
+  
+  # Calculer et ajouter le nombre d'outliers par ligne
+  data_frame$outlier_count <- rowSums(numeric_outliers == 1, na.rm = TRUE)
+  
+  return(data_frame)
+}
+
+
+
+
+# Appliquer la fonction au dataframe 'data_all' 
+dfclean_count_outliers <- ajout_detect_count_outliers(dfclean)
+print(head(dfclean_count_outliers))
+
+# Initialisation d'une liste pour stocker les modèles
+models_out_count <- list()
+
+# Initialisation d'une liste pour stocker les erreurs MAE de chaque modèle
+mae_errors_out_count <- numeric(47)
+
+# Boucle sur les périodes de 10 jours, pour un total de 47 itérations
+for (i in 0:46) {
+  # Définition des intervalles de jours pour l'entraînement et le test
+  train_start_day <- i * 10
+  test_start_day <- train_start_day + 10
+  
+  # Sélection des données d'entraînement et de test
+  train_data <- filter(dfclean_count_outliers, date_id > train_start_day & date_id <= train_start_day + 10)
+  test_data <- filter(dfclean_count_outliers, date_id > test_start_day & date_id <= test_start_day + 10)
+  
+  # Séparation des caractéristiques et de la cible
+  train_x <- select(train_data, -target)
+  train_y <- train_data$target
+  test_x <- select(test_data, -target)
+  test_y <- test_data$target
+  
+  ####### Préparation des données pour LightGBM
+  dtrain <- lgb.Dataset(data = as.matrix(train_x), label = train_y)
+  dtest <- lgb.Dataset(data = as.matrix(test_x), label = test_y)
+  
+  # Configuration des paramètres de LightGBM
+  params <- list(
+    objective = "regression_l1",  # MAE
+    metric = "mae",
+    num_leaves = 31,
+    learning_rate = 0.05,
+    n_estimators = 100
+  )
+  
+  # Entraînement du modèle LightGBM
+  lightgbm_model <- lgb.train(params, dtrain, valids = list(test = dtest), verbose = 1)
+  
+  # Stockage du modèle
+  models_out_count[[i + 1]] <- lightgbm_model
+  
+  # Prédiction avec le modèle LightGBM
+  lightgbm_predictions <- predict(lightgbm_model, as.matrix(test_x))
+  
+  # Calcul et stockage de l'erreur MAE
+  mae_errors_out_count[i + 1] <- mean(abs(test_y - lightgbm_predictions))
+}
+
+
+
+# Initialisation d'une liste pour stocker les modèles
+models_new_out_count <- list()
+
+# Initialisation d'une liste pour stocker les erreurs MAE de chaque modèle
+mae_errors_new_out_count <- numeric(47)
+
+# Boucle sur les périodes de 10 jours, pour un total de 47 itérations
+for (i in 0:46) {
+  # Définition des intervalles de jours pour l'entraînement et le test
+  train_end_day <- (i + 1) * 10
+  test_start_day <- train_end_day + 1
+  test_end_day <- test_start_day + 9
+  
+  # Sélection des données d'entraînement et de test
+  train_data <- dfclean_count_outliers[dfclean_outliers$date_id <= train_end_day, ]
+  test_data <- dfclean_count_outliers[dfclean_outliers$date_id >= test_start_day & dfclean$date_id <= test_end_day, ]
+  
+  # Séparation des caractéristiques et de la cible
+  train_x <- train_data[, setdiff(names(train_data), "target")]
+  train_y <- train_data[["target"]]
+  test_x <- test_data[, setdiff(names(test_data), "target")]
+  test_y <- test_data[["target"]]
+  
+  # Préparation des données pour LightGBM
+  dtrain <- lgb.Dataset(data = as.matrix(train_x), label = train_y)
+  dtest <- lgb.Dataset(data = as.matrix(test_x), label = test_y)
+  
+  # Configuration des paramètres de LightGBM
+  params <- list(
+    objective = "regression_l1",  # MAE
+    metric = "mae",
+    num_leaves = 31,
+    learning_rate = 0.05,
+    n_estimators = 100
+  )
+  
+  # Entraînement du modèle LightGBM
+  lightgbm_model <- lgb.train(params, dtrain, valids = list(test = dtest), verbose = 1)
+  
+  # Stockage du modèle
+  models_new_out_count[[i + 1]] <- lightgbm_model
+  
+  # Prédiction avec le modèle LightGBM
+  lightgbm_predictions <- predict(lightgbm_model, as.matrix(test_x))
+  
+  # Calcul et stockage de l'erreur MAE
+  mae_errors_new_out_count[i + 1] <- mean(abs(test_y - lightgbm_predictions))
+}
+
+
+# Affichage des erreurs MAE
+print(mae_errors_out_count)
+print(mae_errors_new_out_count)
+# Vous pouvez ensuite examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
+mean(mae_errors_out_count)
+mean(mae_errors_new_out_count)
+
+# Compare the two lists element-wise
+comparison_count <- mae_errors_out_count >= mae_errors_new_out_count
+
+# Convert the TRUE/FALSE values to 1/0
+comparison_values_count <- as.integer(comparison_count)
+
+# Calculate the proportion of 1's in the comparison
+proportion_of_ones_count <- sum(comparison_values_count) / length(comparison_values_count)
+
+# Return both the comparison list and the proportion
+list(comparison_values_count = comparison_values_count, proportion_of_ones_count = proportion_of_ones_count)
+
+difference <- mae_errors_out_count - mae_errors_new_out_count
+difference
+print(max(difference))
+print(min(difference))
+print(mean(difference))
+
+
+
+
+
+
+
+# Affichage des erreurs MAE
+print(mae_errors_new_out_count)
+print(mae_errors_new_out)
+print(mae_errors_new)
+
+print(mae_errors_out_count)
+print(mae_errors_out)
+print(mae_errors)
+
+
+# Calcul de la moyenne des erreurs MAE
+mean(mae_errors_new_out_count)
+mean(mae_errors_new_out)
+mean(mae_errors_new)
+
+mean(mae_errors_out_count)
+mean(mae_errors_out)
+mean(mae_errors)
 
