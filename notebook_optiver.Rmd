@@ -1275,19 +1275,22 @@ mean(mae_errors)
 
 
 ```{r}
+time_ = (10*55):(7*10*55)
 
 for (i in 1:5) {
-  train_start_time <- i * 10*55
-  test_start_time <- train_start_time + 10*55
-  test_stop_time <- test_start_time + 10*55-1
-  plot(test_start_time:test_stop_time,y_true[(time[0]+test_start_time-1):(time[0]+test_stop_time-1)], type='l',xlab='Time',ylab='target')
-  par(new=TRUE)
-  plot(test_start_time:test_stop_time,y_pred_short[(time[0]+test_start_time-1):(time[0]+test_stop_time-1)],col='red',type='l')
-  axis(side = 4, col='red')
-  mtext(side = 4, line = 3, "pred", col='red')
-  legend("topleft",c("true","pred"),col=c("black","red"),lty=1,ncol=1,bty="n")
-    
+  train_start_time <- i * 2*55
+  test_start_time <- train_start_time + 2*55
+  test_stop_time <- test_start_time + 2*55-1
   
+  y1 <-  y_true[(time_[1]+test_start_time-1):(time_[1]+test_stop_time-1)]
+  y2 <- y_pred_short[(time_[1]+test_start_time-1):(time_[1]+test_stop_time-1)]
+  plot(test_start_time:test_stop_time, y1, type = "l", col = "red", ylim = c(min(c(y1, y2)), max(c(y1, y2))), xlab = "time", ylab = "targets", main="true target vs predicted")
+
+# Add the second time series
+lines(test_start_time:test_stop_time, y2, col = "darkgreen")
+
+# Add a legend
+legend("topright", legend = c("true", "pred"), col = c("red", "darkgreen"), lty = 1)
 }
 
 
