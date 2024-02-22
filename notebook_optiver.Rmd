@@ -1,0 +1,1562 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+```{r}
+rm(list=objects())
+
+library(parallel)
+
+# Load required libraries
+library(dplyr)
+library(data.table)
+library(caret)
+library(zoo)
+library(data.table)
+library(lightgbm)
+library(xgboost)
+library(tidyverse)
+library(glmnet)
+library(forecast)
+library(mgcv)
+library(mgcViz)
+library(gridExtra)
+library(yarrr)
+library(lightgbm)
+library(xgboost)
+library(dplyr)
+library(tidyr)
+library(dygraphs)
+library(xts)
+library(tidyverse)
+library(ggplot2)
+
+```
+
+
+Import the dataset
+```{r}
+
+
+setwd("/Users/bigmac/Desktop/MDA woohoo/projet ML prévision/")
+data_all<-read_csv("/Users/bigmac/Desktop/MDA woohoo/projet ML prévision/optiver-trading-at-the-close/train.csv",
+                   col_names =TRUE)
+
+data0_bis <- data_all[data_all$stock_id == c(1,2), ]
+
+par(mfrow = c(1, 1))
+data_all$stock_id<-as.factor(data_all$stock_id)
+
+head(data0_bis)
+data_all
+
+
+
+
+```
+
+```{r}
+count_nan <- function(group) {
+  sum(is.na(group))
+}
+
+# Grouper les données par intervalles de 10 secondes dans 'seconds_in_bucket'
+# et compter les valeurs NA dans chaque groupe (sauf pour 'seconds_in_bucket')
+incr_nan <- data_all %>%
+  mutate(bucket = cut(seconds_in_bucket, breaks = seq(-10, max(seconds_in_bucket, na.rm = TRUE) + 10, by = 10), include.lowest = FALSE)) %>%
+  group_by(bucket) %>%
+  summarise(across(-seconds_in_bucket, ~sum(is.na(.)))) %>%
+  ungroup()  # Pour enlever le regroupement par 'bucket'
+
+# Afficher les résultats
+print(incr_nan)
+
+
+
+
+# Transformation des données pour le tracé
+incr_nan_long <- incr_nan %>%
+  pivot_longer(-bucket, names_to = "variable", values_to = "missing_values")
+
+# Tracer
+
+ggplot(incr_nan_long, aes(x = bucket, y = missing_values, color = variable, group = variable)) +
+  geom_line() + # Tracer des lignes en groupant par 'variable'
+  theme_minimal() + # Appliquer un thème minimal
+  labs(title = "Progression des valeurs manquantes par intervalle de temps",
+       x = "Intervalles de temps dans le seau (secondes)",
+       y = "Nombre de valeurs manquantes",
+       color = "Variable") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), # Rotation des étiquettes de l'axe X pour une meilleure lisibilité
+        plot.title = element_text(hjust = 0.5)) # Centrer le titre du graphique
+
+
+# Analyser les valeurs manquantes par 'date_id'
+analysis_nan_date <- data_all %>%
+  group_by(date_id) %>%
+  summarise(across(everything(), ~sum(is.na(.))))
+
+# Afficher les résultats
+print(analysis_nan_date)
+
+
+
+
+# Fondre les données pour un format long approprié pour ggplot
+analysis_nan_date_long <- reshape2::melt(analysis_nan_date, id.vars = "date_id")
+
+# Filtrer les colonnes d'intérêt
+columns_of_interest <- c('imbalance_size','far_price', 'near_price', 'reference_price', 'matched_size', 'bid_price', 'ask_price')  
+analysis_nan_date_filtered <- subset(analysis_nan_date_long, variable %in% columns_of_interest)
+
+# Créer le graphique
+ggplot(data = analysis_nan_date_filtered, aes(x = date_id, y = value, color = variable)) +
+  geom_line() +
+  labs(title = "Missing values for 'columns_of_interest' over different date_ids",
+       x = "date_id",
+       y = "Number of Missing Values") +
+  theme_minimal()
+
+
+# Sélectionner uniquement les colonnes d'intérêt
+columns_of_interest2 <- c('imbalance_size', 'reference_price', 'matched_size', 'bid_price', 'ask_price')
+analysis_nan_date_filtered2 <- analysis_nan_date[, c('date_id', columns_of_interest2)]
+
+# Transformer les données de format large à long pour le tracé avec ggplot2
+analysis_nan_date_long2 <- melt(analysis_nan_date_filtered2, id.vars = 'date_id', variable.name = 'Variable', value.name = 'Number_of_Missing_Values')
+
+# Tracer les valeurs manquantes pour les colonnes d'intérêt par date_id
+ggplot(data = analysis_nan_date_long2, aes(x = date_id, y = Number_of_Missing_Values, color = Variable)) +
+  geom_line() +
+  labs(title = "Missing values for selected columns over different date_ids",
+       x = "Date ID",
+       y = "Number of Missing Values") +
+  theme_minimal()
+
+# Filtrer les lignes où imbalance_size est égal à 55
+filtered_rows <- subset(analysis_nan_date, imbalance_size == 55)
+
+# Afficher les résultats
+print(filtered_rows)
+
+
+
+
+analysis_nan_date_long3 <- reshape2::melt(analysis_nan_date, id.vars = "date_id", measure.vars = c("far_price", "near_price"))
+
+# Générer le graphique
+ggplot(data = analysis_nan_date_long3, aes(x = date_id, y = value, color = variable)) +
+  geom_line() +
+  labs(title = "Missing values for near and far prices over different date_ids",
+       x = "Date ID",
+       y = "Number of Missing Values",
+       color = "Price Type") +
+  theme_minimal()
+
+
+```
+
+
+
+```{r}
+dfclean <- data_all %>% filter(!is.na(target))
+
+# 2. Imputer les valeurs pour 'far_price' et 'near_price' pour les secondes inférieures à 300
+#dfclean <- dfclean %>%
+#  mutate(far_price = ifelse(seconds_in_bucket < 300 & is.na(far_price), 0, far_price),
+#         near_price = ifelse(seconds_in_bucket < 300 & is.na(near_price), 0, near_price))
+
+# 2.0 
+replace_by_cond <- function(data) {
+  # Identifier les lignes où `far_price` est NA
+  cond <- is.na(data$far_price)
+  
+  # Remplacer `far_price` en fonction de la condition
+  data$far_price <- ifelse(cond, 
+                           ifelse(data$imbalance_buy_sell_flag == 1, data$ask_price, 
+                                  ifelse(data$imbalance_buy_sell_flag == -1, data$bid_price, 
+                                         (data$bid_price + data$ask_price)/2)), 
+                           data$far_price)
+  
+  # Remplacer `near_price` en fonction de la condition
+  data$near_price <- ifelse(cond, 
+                            ifelse(data$imbalance_buy_sell_flag == 1, data$ask_price, 
+                                   ifelse(data$imbalance_buy_sell_flag == -1, data$bid_price, 
+                                          (data$bid_price + data$ask_price)/2)), 
+                            data$near_price)
+  
+  # Ajuster `reference_price` en fonction de la condition
+  data$reference_price <- ifelse(cond, 
+                                 ifelse((data$near_price > data$bid_price) & (data$near_price < data$ask_price), 
+                                        data$near_price, 
+                                        ifelse(data$near_price > data$ask_price, data$ask_price, data$bid_price)),
+                                 data$reference_price)
+  
+  return(data)
+}
+
+cond <- function(data) {
+  # Copie des données pour éviter de modifier l'ensemble de données original
+  raw <- data
+  
+  # Suppression des enregistrements où 'wap' est NA
+  rmv <- raw[!is.na(raw$wap), ]
+  
+  # Application de la fonction de remplacement conditionnel
+  cond <- replace_by_cond(rmv)
+  
+  return(cond)
+}
+# Application de la fonction `cond` à l'ensemble de données `train`
+# Assurez-vous que l'ensemble de données `train` a été correctement chargé et préparé en R
+dfclean=cond(data_all)
+pourcentage_na_apres <- sapply(dfclean, function(x) mean(is.na(x))) * 100
+pourcentage_na_apres_df <- as.data.frame(pourcentage_na_apres)
+# Afficher le DataFrame vertical
+print(pourcentage_na_apres_df)
+
+
+
+# 5. Calculer le pourcentage de données supprimées
+pourcentage_donnees_supprimees <- (nrow(data_all) - nrow(dfclean)) / nrow(data_all) * 100
+print(pourcentage_donnees_supprimees)
+
+data_all=dfclean
+
+
+```
+
+
+Infos
+
+```{r}
+
+df_infos = data.frame(
+  Characteristics = c("Number of features", "Number of stocks", "Number of days in the study", "Number of data points each day", "Time increment (seconds)", "Number of total data points per stocks"), 
+  Value = c(length(colnames(data_all)), length(unique(data_all$stock_id)), length(unique(data_all$date_id)), length(unique(data_all$time_id))/length(unique(data_all$date_id)), 10, length(unique(data_all$time_id))))
+  
+df_infos
+```
+
+```{r}
+
+inspect_columns <- function(df) {
+  # Calcul de diverses statistiques pour chaque colonne
+  unique <- sapply(df, function(col) length(unique(col)) == nrow(df))
+  cardinality <- sapply(df, function(col) length(unique(col)))
+  with_null <- sapply(df, function(col) any(is.na(col)))
+  null_pct <- sapply(df, function(col) round(sum(is.na(col)) / nrow(df) * 100, 2))
+  first_row <- sapply(df, function(col) col[1])
+  random_row <- sapply(df, function(col) col[sample(nrow(df), 1)])
+  last_row <- sapply(df, function(col) col[nrow(df)])
+  dtype <- sapply(df, function(col) class(col)[1])
+  
+  # Création du dataframe résultat
+  result <- data.frame(unique, cardinality, with_null, null_pct, first_row, random_row, last_row, dtype, stringsAsFactors = FALSE)
+  
+  # Ajustement des noms de colonnes pour la cohérence avec l'exemple Python
+  names(result) <- c('unique', 'cardinality', 'with_null', 'null_pct', '1st_row', 'random_row', 'last_row', 'dtype')
+  
+  return(result)
+}
+inspect_columns(data_all)
+
+```
+
+
+
+
+Select the most meaningful stocks
+
+```{r}
+n_stocks = 200
+
+data_all_bis = copy(data_all)
+
+task_variances <- data_all_bis %>%
+  group_by(stock_id) %>%
+  summarise(variance = var(target, na.rm = FALSE)) %>%
+  arrange(desc(variance))
+
+# Select the top n_stocks tasks with the highest variance
+top_n_tasks <- head(task_variances, n_stocks)
+top_stocks = c(top_n_tasks$stock_id)
+
+data_n <-subset(data_all, stock_id %in% top_stocks)
+data_n[is.na(data_n)] <- NaN
+```
+
+```{r}
+ordinary <- c('imbalance_buy_sell_flag')
+size <- c('bid_size', 'ask_size', 'imbalance_size', 'matched_size')
+price1 <- c('bid_price', 'ask_price', 'wap', 'reference_price')
+price2 <- c('far_price', 'near_price')
+label <- 'target'
+
+
+data_n <- select(data_n, time_id, stock_id, date_id, seconds_in_bucket, all_of(c(ordinary, size, price1, price2, label)))
+
+data_n <- arrange(data_n, stock_id)
+```
+
+
+
+
+```{r}
+df_infos = data.frame(
+  Characteristics = c("Number of features", "Number of stocks", "Number of days in the study", "Number of data points each day", "Time increment (seconds)", "Number of total data points per stocks"), 
+  Value = c(as.integer(length(colnames(data_n))), as.integer(length(unique(data_n$stock_id))), as.integer(length(unique(data_n$date_id))), as.integer(length(unique(data_n$time_id))/length(unique(data_n$date_id))), as.integer(10), as.integer(length(unique(data_n$time_id)))))
+  
+df_infos
+inspect_columns(data_n)
+```
+
+
+```{r}
+
+
+columns_to_plot <- c(ordinary, size, price1, price2, "target")
+
+ggplot(data_n, aes(x = target, fill = stock_id)) +
+  geom_density(alpha = 0.2) + 
+  ggtitle(paste0("Distribution de target")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11))
+
+ggplot(data_n, aes(x = wap, fill = stock_id)) +
+  geom_density(alpha = 0.2) + 
+  ggtitle(paste0("Distribution de wap")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11))
+
+ggplot(data_n, aes(x = reference_price, fill = stock_id)) +
+  geom_density(alpha = 0.2) + 
+  ggtitle(paste0("Distribution de reference_price")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11))
+
+ggplot(data_n, aes(x = ask_price, fill = stock_id)) +
+  geom_density(alpha = 0.2) + 
+  ggtitle(paste0("Distribution de ask_price")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11))
+
+ggplot(data_n, aes(x = bid_price, fill = stock_id)) +
+  geom_density(alpha = 0.2) + 
+  ggtitle(paste0("Distribution de bid_price")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11))
+
+ggplot(data_n, aes(x = matched_size, fill = stock_id)) +
+  geom_density(alpha = 0.2) + 
+  ggtitle(paste0("Distribution de matched_size")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11))
+
+ggplot(data_n, aes(x = imbalance_size, fill = stock_id)) +
+  geom_density(alpha = 0.2) + 
+  ggtitle(paste0("Distribution de imbalance_size")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11))
+
+ggplot(data_n, aes(x = ask_size, fill = stock_id)) +
+  geom_density(alpha = 0.2) + 
+  ggtitle(paste0("Distribution de ask_size")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11))
+
+ggplot(data_n, aes(x = bid_size, fill = stock_id)) +
+  geom_density(alpha = 0.2) + 
+  ggtitle(paste0("Distribution de bid_size")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11))
+
+
+
+ggplot(data_n, aes(x = imbalance_buy_sell_flag, fill = stock_id)) +
+  geom_density(alpha = 0.2) + 
+  ggtitle(paste0("Distribution de imbalance_buy_sell_flag")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11))
+
+```
+
+```{r}
+plot_n_days <- function(n_days, n_length, df_plot, var, type_='p') {
+  #par(mfrow=c(3,as.integer(n_length/3)))
+  for (i in 1:n_length){
+    df_plot_batch <- df_plot[((i-1)*(55*n_days)+1):(i*(55*n_days)+1), ]
+    plot(df_plot_batch[[var]], df_plot_batch$target,pch=16,cex=0.5
+         , type=type_, main=paste(c("target ~", var, "; batch :", as.character(i))))
+  }
+  
+  par(mfrow=c(1,1))
+  
+}
+
+
+
+```
+
+```{r}
+
+data_n_1 <- data_n[data_n$stock_id == 31,]
+
+hist(data_n_1$target)
+
+
+plot_n_days(n_days = 10, 3, data_n_1, "wap")
+
+plot_n_days(n_days = 10, 3, data_n_1, "time_id", 'l')
+plot_n_days(n_days = 10, 3, data_n_1, "date_id")
+plot_n_days(n_days = 10, 3, data_n_1, "date_id")
+plot_n_days(n_days = 10, 3, data_n_1, "imbalance_size")
+plot_n_days(n_days = 10, 3, data_n_1, "reference_price")
+plot_n_days(n_days = 10, 3, data_n_1, "ask_price")
+plot_n_days(n_days = 10, 3, data_n_1, "bid_price")
+plot_n_days(n_days = 10, 3, data_n_1, "ask_size")
+plot_n_days(n_days = 10, 3, data_n_1, "bid_size")
+plot_n_days(n_days = 10, 3, data_n_1, "matched_size")
+plot_n_days(n_days = 20, 3, data_n_1, "seconds_in_bucket")
+plot_n_days(n_days = 1, 3, data_n_1, "seconds_in_bucket")
+
+```
+
+
+
+Useful functions for metrics 
+
+```{r}
+rmse<-function(y_pred, y_true)
+  {
+    return(round(sqrt(mean((y_true-y_pred)^2,na.rm=TRUE)),digits=0))
+}
+
+
+mae<-function(y_pred,y_true)
+  {
+    return(mean(abs(y_pred-y_true)))
+}
+
+
+
+```
+
+
+
+
+
+
+```{r}
+
+# Calculate Pearson correlation
+pearson <- cor(data_n[, c(ordinary, size, price1)], data_n[, label], method = "pearson")
+
+# Calculate Spearman correlation
+spearman <- cor(data_n[, c(ordinary, size, price1)], data_n[, label], method = "spearman")
+
+# Transform correlations to data frames for plotting
+pearson_df <- as.data.frame(abs(pearson), row.names = c(ordinary, size, price1))
+pearson_df$Variable <- rownames(pearson_df)
+pearson_df <- arrange(pearson_df,target)
+
+spearman_df <- as.data.frame(abs(spearman), row.names = c(ordinary, size, price1))
+spearman_df$Variable <- rownames(spearman_df)
+spearman_df <- arrange(spearman_df,target)
+
+# Plotting
+ggplot() + 
+  geom_bar(data = pearson_df, aes(x = Variable, y = target, fill = "gray"), stat = "identity") +
+  coord_flip() + 
+  labs(title = "Pearson Mean", x = "", y = "Correlation") + 
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ggplot() + 
+  geom_bar(data = spearman_df, aes(x = Variable, y = target, fill = "gray"), stat = "identity") +
+  coord_flip() + 
+  labs(title = "Spearman Mean", x = "", y = "Correlation") + 
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+global_stock_id_feats <- list(
+  median_size = data_n %>%
+    group_by(stock_id) %>%
+    summarise(median_bid_size = median(bid_size, na.rm = TRUE),
+              median_ask_size = median(ask_size, na.rm = TRUE)) %>%
+    transmute(stock_id, median_size = median_bid_size + median_ask_size) %>%
+    ungroup() %>%
+    select(-stock_id),
+
+  std_size = data_n %>%
+    group_by(stock_id) %>%
+    summarise(std_bid_size = sd(bid_size, na.rm = TRUE),
+              std_ask_size = sd(ask_size, na.rm = TRUE)) %>%
+    transmute(stock_id, std_size = std_bid_size + std_ask_size) %>%
+    ungroup() %>%
+    select(-stock_id),
+  
+  ptp_size = data_n %>%
+    group_by(stock_id) %>%
+    summarise(ptp_bid_size = max(bid_size, na.rm = TRUE) - min(bid_size, na.rm = TRUE)) %>%
+    ungroup() %>%
+    rename(ptp_size = ptp_bid_size),
+  
+  median_price = data_n %>%
+    group_by(stock_id) %>%
+    summarise(median_bid_price = median(bid_price, na.rm = TRUE),
+              median_ask_price = median(ask_price, na.rm = TRUE)) %>%
+    transmute(stock_id, median_price = median_bid_price + median_ask_price) %>%
+    ungroup() %>%
+    select(-stock_id),
+  
+  std_price = data_n %>%
+    group_by(stock_id) %>%
+    summarise(std_bid_price = sd(bid_price, na.rm = TRUE),
+              std_ask_price = sd(ask_price, na.rm = TRUE)) %>%
+    transmute(stock_id, std_price = std_bid_price + std_ask_price) %>%
+    ungroup() %>%
+    select(-stock_id),
+  
+  ptp_price = data_n %>%
+    group_by(stock_id) %>%
+    summarise(ptp_bid_price = max(bid_price, na.rm = TRUE) - min(ask_price, na.rm = TRUE)) %>%
+    ungroup() %>%
+    rename(ptp_price = ptp_bid_price)
+)
+
+
+weights_vector = c(
+    0.004, 0.001, 0.002, 0.006, 0.004, 0.004, 0.002, 0.006, 0.006, 0.002, 0.002, 0.008,
+    0.006, 0.002, 0.008, 0.006, 0.002, 0.006, 0.004, 0.002, 0.004, 0.001, 0.006, 0.004,
+    0.002, 0.002, 0.004, 0.002, 0.004, 0.004, 0.001, 0.001, 0.002, 0.002, 0.006, 0.004,
+    0.004, 0.004, 0.006, 0.002, 0.002, 0.04 , 0.002, 0.002, 0.004, 0.04 , 0.002, 0.001,
+    0.006, 0.004, 0.004, 0.006, 0.001, 0.004, 0.004, 0.002, 0.006, 0.004, 0.006, 0.004,
+    0.006, 0.004, 0.002, 0.001, 0.002, 0.004, 0.002, 0.008, 0.004, 0.004, 0.002, 0.004,
+    0.006, 0.002, 0.004, 0.004, 0.002, 0.004, 0.004, 0.004, 0.001, 0.002, 0.002, 0.008,
+    0.02 , 0.004, 0.006, 0.002, 0.02 , 0.002, 0.002, 0.006, 0.004, 0.002, 0.001, 0.02,
+    0.006, 0.001, 0.002, 0.004, 0.001, 0.002, 0.006, 0.006, 0.004, 0.006, 0.001, 0.002,
+    0.004, 0.006, 0.006, 0.001, 0.04 , 0.006, 0.002, 0.004, 0.002, 0.002, 0.006, 0.002,
+    0.002, 0.004, 0.006, 0.006, 0.002, 0.002, 0.008, 0.006, 0.004, 0.002, 0.006, 0.002,
+    0.004, 0.006, 0.002, 0.004, 0.001, 0.004, 0.002, 0.004, 0.008, 0.006, 0.008, 0.002,
+    0.004, 0.002, 0.001, 0.004, 0.004, 0.004, 0.006, 0.008, 0.004, 0.001, 0.001, 0.002,
+    0.006, 0.004, 0.001, 0.002, 0.006, 0.004, 0.006, 0.008, 0.002, 0.002, 0.004, 0.002,
+    0.04 , 0.002, 0.002, 0.004, 0.002, 0.002, 0.006, 0.02 , 0.004, 0.002, 0.006, 0.02,
+    0.001, 0.002, 0.006, 0.004, 0.006, 0.004, 0.004, 0.004, 0.004, 0.002, 0.004, 0.04,
+    0.002, 0.008, 0.002, 0.004, 0.001, 0.004, 0.006, 0.004
+)
+
+weights <- setNames(as.list(weights_vector), seq_along(weights_vector) - 1)
+
+
+```
+
+
+# FEATURES
+
+```{r}
+
+compute_rolling_averages <- function(df, window_sizes) {
+  # Assurez-vous que df est une matrice ou un data frame avec des valeurs numériques
+  df_values <- as.matrix(df)
+  num_features <- ncol(df_values)
+  
+  # Création d'une liste pour stocker les résultats
+  rolling_features <- vector("list", length(window_sizes))
+  names(rolling_features) <- paste("Window", window_sizes)
+  
+  # Calcul parallèle des moyennes mobiles pour chaque taille de fenêtre
+  cl <- makeCluster(detectCores() - 1) # Utiliser un cœur de moins que le total disponible
+  clusterExport(cl, varlist = c("df_values", "window_sizes"), envir = environment())
+  clusterEvalQ(cl, library(zoo))
+  
+  rolling_features <- parLapply(cl, window_sizes, function(window) {
+    # Initialisation d'une matrice pour stocker les moyennes mobiles pour cette taille de fenêtre
+    result_matrix <- matrix(NA, nrow = nrow(df_values), ncol = num_features)
+    
+    for (feature_idx in 1:num_features) {
+      # Calcul de la moyenne mobile pour chaque caractéristique
+      result_matrix[, feature_idx] <- rollapply(df_values[, feature_idx], window, mean, fill = mean(df_values[[feature_idx]]), align = "right")
+    }
+    
+    return(result_matrix)
+  })
+  
+  stopCluster(cl)
+  
+  return(rolling_features)
+}
+
+compute_rolling_averages_df <- function(df){
+  # Itération sur chaque colonne de prix et assignation des résultats
+prices <- c("reference_price", "far_price", "near_price", "ask_price", "bid_price", "wap")
+window_sizes <- c(10,5) # Exemple de tailles de fenêtre
+
+for (price in prices) {
+  rolling_avg_features <- compute_rolling_averages(df[[price]], window_sizes)
+  
+  # Assignation des résultats des moyennes mobiles au DataFrame
+  for (i in seq_along(window_sizes)) {
+    window <- window_sizes[i]
+    column_name <- paste(price, "rolling_avg", window, sep = "_")
+    df[[column_name]] <- rolling_avg_features[[i]]
+  }
+}
+return (df)
+}
+
+
+
+compute_triplet_imbalance <- function(df, price) {
+  comb_indices <- combn(price, 3, simplify = FALSE)
+  features_list <- mclapply(comb_indices, function(c) {
+    a <- df[[c[1]]]
+    b <- df[[c[2]]]
+    c <- df[[c[3]]]
+    
+    max_val <- pmax(a, b, c)
+    min_val <- pmin(a, b, c)
+    mid_val <- a + b + c - max_val - min_val
+    
+    imbalance_feature <- ifelse(mid_val == min_val, 0, (max_val - mid_val) / (mid_val - min_val))
+    return(imbalance_feature)
+  }, mc.cores = detectCores())
+  
+  features_matrix <- do.call(cbind, features_list)
+  colnames(features_matrix) <- sapply(comb_indices, function(c) paste(c, collapse = "_"), USE.NAMES = FALSE)
+  return(as.data.frame(features_matrix))
+}
+
+ajout_detect_outliers <- function(data_frame) {
+  # Créer un dataframe pour stocker les indicateurs d'outliers
+  outliers <- data_frame
+  
+  # Parcourir chaque colonne du dataframe
+  for(col_name in names(data_frame)) {
+    # Vérifier si la colonne est numérique
+    if(is.numeric(data_frame[[col_name]])) {
+      # Calculer Q1, Q3 et IQR
+      Q1 <- quantile(data_frame[[col_name]], 0.25, na.rm = TRUE)
+      Q3 <- quantile(data_frame[[col_name]], 0.75, na.rm = TRUE)
+      IQR <- Q3 - Q1
+      
+      # Calculer les bornes pour déterminer les outliers
+      lower_bound <- Q1 - 1.5 * IQR
+      upper_bound <- Q3 + 1.5 * IQR
+      
+      # Marquer les valeurs en dehors des bornes comme TRUE (outlier)
+      outliers[[col_name]] <- data_frame[[col_name]] < lower_bound | data_frame[[col_name]] > upper_bound
+    } else {
+      # Pour les colonnes non numériques, marquer toutes les valeurs comme FALSE
+      outliers[[col_name]] <- FALSE
+    }
+  }
+  
+  # Ajouter une colonne 'has_outlier' pour marquer les lignes avec au moins un outlier
+  #outliers$has_outlier <- apply(outliers, 1, function(row) as.integer(any(row)))
+  data_frame$has_outlier <- apply(outliers, 1, function(row) as.integer(any(row)))
+  
+  return(data_frame)
+}
+
+
+
+imbalance_features <- function(df) {
+  prices <- c("reference_price", "far_price", "near_price", "ask_price", "bid_price", "wap")
+  sizes <- c("matched_size", "bid_size", "ask_size", "imbalance_size")
+  
+  df <- df %>%
+    mutate(volume = ask_size + bid_size,
+           mid_price = (ask_price + bid_price) / 2,
+           liquidity_imbalance = (bid_size - ask_size) / (bid_size + ask_size),
+           matched_imbalance = (imbalance_size - matched_size) / (matched_size + imbalance_size),
+           size_imbalance = bid_size / ask_size)
+  
+  
+  df <- cbind(df, compute_triplet_imbalance(df, prices))
+  
+ 
+  return(df)
+}
+
+
+
+other_features_lgbm <- function(df) {
+  
+  prices <- c("reference_price", "far_price", "near_price", "ask_price", "bid_price", "wap")
+  sizes <- c("matched_size", "bid_size", "ask_size", "imbalance_size")
+  
+  
+  df <- df %>%
+  mutate(
+    non_auction_size = bid_size + ask_size,
+    auction_size = imbalance_size + matched_size,
+    size = auction_size + non_auction_size,
+    non_auction_size1 = non_auction_size / size,
+    auction_size1 = auction_size / size,
+    bid_size1 = bid_size / non_auction_size,
+    ask_size1 = ask_size / non_auction_size,
+    bid_size2 = bid_size / size,
+    ask_size2 = ask_size / size,
+    imbalance_size1 = imbalance_size / auction_size,
+    matched_size1 = matched_size / auction_size,
+    imbalance_size2 = imbalance_size / size,
+    matched_size2 = matched_size / size,
+    non_auction_size_diff = bid_size1 - ask_size1,
+    auction_size_diff = matched_size1 - imbalance_size1,
+    size_diff = non_auction_size1 - auction_size1
+  )
+  df <- df %>%
+    group_by(stock_id) %>%
+    mutate(
+           imbalance_momentum = (imbalance_size - lag(imbalance_size, 1)) / matched_size,
+           price_spread = ask_price - bid_price,
+           spread_intensity = price_spread - lag(price_spread),
+           price_pressure = imbalance_size * price_spread,
+           market_urgency = price_spread * liquidity_imbalance,
+           depth_pressure = (ask_size - bid_size) * (far_price - near_price),
+           spread_depth_ratio = price_spread / (bid_size + ask_size),
+           mid_price_movement = as.integer(sign(dplyr::lag(mid_price, 5) - mid_price)),
+           micro_price = ((bid_price * ask_size) + (ask_price * bid_size)) / (bid_size + ask_size),
+           relative_spread = (ask_price - bid_price) / wap)
+  
+  # Calcul des features statistiques pour tous les prix et tailles
+  df$all_prices_mean <- rowMeans(df[, prices], na.rm = TRUE)
+  df$all_sizes_mean <- rowMeans(df[, sizes], na.rm = TRUE)
+  
+  # Autres features calculées similaires à l'exemple Python
+  
+  
+  df<- df %>%
+  group_by(stock_id, date_id) %>%
+  mutate(
+    bid_size_diff_10 = (bid_size / lag(bid_size, 10)) - 1
+    # Répétez pour d'autres caractéristiques et délais comme requis
+  ) %>%
+  ungroup()
+
+price1 <- c('bid_price', 'ask_price', 'reference_price') 
+price2 <- c('far_price', 'near_price') 
+
+for(p in c(price1, price2)) {
+  df[[paste0(p, "1")]] <- df[[p]] / df[['wap']]
+}
+  df <- df %>%
+    mutate(
+      dow = date_id %% 5,  # Jour de la semaine
+      seconds = seconds_in_bucket %% 60,
+      minute = seconds_in_bucket %/% 60,
+      time_to_market_close = 540 - seconds_in_bucket
+    )
+  
+  # Assurez-vous que global_stock_id_feats est défini dans votre environnement
+  for (key in names(global_stock_id_feats)) {
+    df[[paste0("global_", key)]] <- df[["stock_id"]] %in% global_stock_id_feats[[key]]
+  }
+  
+  return(df)
+}
+
+
+
+other_features_norm <- function(df) {
+  
+  prices <- c("reference_price", "far_price", "near_price", "ask_price", "bid_price", "wap")
+  sizes <- c("matched_size", "bid_size", "ask_size", "imbalance_size")
+  
+  
+  df <- df %>%
+  mutate(
+    non_auction_size = bid_size + ask_size,
+    auction_size = imbalance_size + matched_size,
+    size = auction_size + non_auction_size,
+    non_auction_size1 = non_auction_size / size,
+    auction_size1 = auction_size / size,
+    bid_size1 = bid_size / non_auction_size,
+    ask_size1 = ask_size / non_auction_size,
+    bid_size2 = bid_size / size,
+    ask_size2 = ask_size / size,
+    imbalance_size1 = imbalance_size / auction_size,
+    matched_size1 = matched_size / auction_size,
+    imbalance_size2 = imbalance_size / size,
+    matched_size2 = matched_size / size,
+    non_auction_size_diff = bid_size1 - ask_size1,
+    auction_size_diff = matched_size1 - imbalance_size1,
+    size_diff = non_auction_size1 - auction_size1
+  )
+  df <- df %>%
+    group_by(stock_id) %>%
+    mutate(
+           
+           price_spread = ask_price - bid_price,
+           spread_depth_ratio = price_spread / (bid_size + ask_size),
+           micro_price = ((bid_price * ask_size) + (ask_price * bid_size)) / (bid_size + ask_size))
+           
+  
+  # Calcul des features statistiques pour tous les prix et tailles
+  df$all_prices_mean <- rowMeans(df[, prices], na.rm = TRUE)
+  df$all_sizes_mean <- rowMeans(df[, sizes], na.rm = TRUE)
+  
+  # Autres features calculées similaires à l'exemple Python
+  
+  
+
+
+price1 <- c('bid_price', 'ask_price', 'reference_price') 
+price2 <- c('far_price', 'near_price') 
+
+for(p in c(price1, price2)) {
+  df[[paste0(p, "1")]] <- df[[p]] / df[['wap']]
+}
+  df <- df %>%
+    mutate(
+      dow = date_id %% 5,  # Jour de la semaine
+      seconds = seconds_in_bucket %% 60,
+      minute = seconds_in_bucket %/% 60,
+      time_to_market_close = 540 - seconds_in_bucket
+    )
+  
+  # Assurez-vous que global_stock_id_feats est défini dans votre environnement
+  for (key in names(global_stock_id_feats)) {
+    df[[paste0("global_", key)]] <- df[["stock_id"]] %in% global_stock_id_feats[[key]]
+  }
+  
+  return(df)
+}
+
+
+
+
+
+
+generate_all_features <- function(df) {
+  
+  df <- compute_rolling_averages_df(df)
+  df <- imbalance_features(df)
+  df <- other_features_norm(df)
+  df <- ajout_detect_outliers(df)
+ 
+  
+  return (df)
+}
+
+
+data_n <- generate_all_features(data_n)
+all_features <- setdiff(colnames(data_n), c("row_id", "target", "time_id", "date_id"))
+
+```
+
+
+```{r}
+
+data_n$stock_id <- as.numeric(data_n$stock_id)
+
+# Calculate Pearson correlation
+pearson <- cor(data_n[,all_features], data_n[, label], method = "pearson")
+
+pearson_df <- as.data.frame(abs(pearson), row.names = all_features)
+pearson_df$Variable <- rownames(pearson_df)
+pearson_df <- arrange(pearson_df,target)[1:20, ]
+
+
+# Plotting
+ggplot() + 
+  geom_bar(data = pearson_df, aes(x = Variable, y = target, fill = "gray"), stat = "identity") +
+  coord_flip() + 
+  labs(title = "Pearson Mean", x = "", y = "Correlation") + 
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
+
+
+```{r}
+
+
+acf(data_n$target,lag.max=52)
+pacf(data_n$target,lag.max=52)
+
+
+```
+
+
+
+
+
+```{r}
+plot_two_ts <- function(n_days, n_length, df_plot, var1, var2, type_){
+  #par(mfrow=c(3,as.integer(n_length/3)))
+  for (i in 1:n_length){
+    df_plot_batch <- df_plot[((i-1)*(55*n_days)+1):(i*(55*n_days)+1), ]
+    plot(df_plot_batch$time_id,df_plot_batch[[var1]], type='l',xlab='Time',ylab='target')
+    par(new=TRUE)
+    plot(df_plot_batch$time_id,df_plot_batch[[var2]],col='red',type=type_, main=paste(c(var1," and ",var2, " ~",       "time ; batch :", as.character(i))),axes=F,xlab='',ylab='')
+    axis(side = 4, col='red')
+    mtext(side = 4, line = 3, var2, col='red')
+    legend("topleft",c(var1,var2),col=c("black","red"),lty=1,ncol=1,bty="n")
+    
+  }
+  par(mfrow=c(1,1))
+}
+```
+
+
+```{r}
+plot_two_ts(3, 3, data_n, "non_auction_size_diff", "target", 'l')
+plot_two_ts(3, 3, data_n, "bid_size1", "target", 'l')
+plot_two_ts(3, 3, data_n, "ask_size1", "target", 'l')
+
+```
+# FURTHER PREPROCESSING
+
+## OUTLIER DETECTION
+
+## DIMENSIONALITY REDUCTION
+
+```{r}
+library(missMDA)
+
+n_pca = 5
+data_n_scaled <- cbind(data_n[, c("target", "time_id", "date_id", "stock_id")], scale(data_n[, setdiff(all_features, "stock_id")]))
+
+pca_result <- prcomp(data_n[, setdiff(all_features, "stock_id")])
+
+
+
+# Affichage de la variance expliquée par chaque composante principale
+-arrange(-as.data.frame(pca_result[2]), rotation.PC1)
+as.data.frame(pca_result[5])
+
+data_n_pca <- cbind(data_n[, c("target", "time_id", "date_id", "stock_id")], as.data.frame(pca_result[5])[,1:n_pca])
+
+
+```
+
+
+
+# MODELS
+
+
+
+
+## USING TIME T-H
+
+```{r}
+time_id_t <- 22000
+
+data_n$stock_id <- as.numeric(data_n$stock_id)
+df_train <- data_n%>%
+  group_by(stock_id)%>%
+  slice_head(n=time_id_t)%>%
+  ungroup()
+df_test <- data_n%>%
+  group_by(stock_id)%>%
+  slice_tail(n=time_id_t)%>%
+  ungroup()
+
+X_train <- df_train[, all_features]
+y_train <- df_train[["target"]]
+
+X_test <- df_test[, all_features]
+y_test <- df_test[["target"]]
+```
+
+
+```{r}
+library(forecast)
+library(purrr)
+library(rugarch)
+
+h_=60
+all_features_to_predict <- setdiff(colnames(data_all[, sapply(data_all, is.numeric)]), c("stock_id", "seconds_in_bucket", "date_id", "row_id", "time_id", "target"))
+data_to_predict <- df_test %>%
+  group_by(stock_id) %>%
+  slice_head(n = h_) %>%
+  ungroup()%>%
+  select(c(all_features_to_predict, c("stock_id", "seconds_in_bucket", "date_id", "time_id", "target")))
+
+y_true <- data_to_predict$target
+
+for (stock in unique(df_test$stock_id)) {
+ print(stock)
+for (features in all_features_to_predict){
+  print(features)
+  # spec <- ugarchspec(variance.model = list(model = "sGARCH"), 
+  #                    mean.model = list(armaOrder = c(1, 1)),
+  #                    distribution.model = "norm")
+  # model_garch <- ugarchfit(spec, data = df_train[df_train$stock_id==stock,][[features]])
+  # forecast <- ugarchforecast(model_garch, n.ahead = h_)
+  # data_to_predict[[features]][data_to_predict$stock_id==stock] <- forecast_garch
+  
+  
+  # feature_model <- auto.arima(df_train[df_train$stock_id==stock,][[features]], seasonal = TRUE) 
+  # forecast <- c(forecast(feature_model, h=h_)$mean)
+  
+
+  # holt_model <- holt(df_train[df_train$stock_id==stock,][[features]], h=h_)
+  # forecast <- forecast(holt_model, h = h_)
+  # forecast<-data.frame(forecast)[["Point.Forecast"]]
+  
+  
+  ses_model <- ses(df_train[df_train$stock_id==stock,][[features]], alpha = 0.2, h=h_) 
+  forecast <- forecast(ses_model, h = h_)
+  forecast<-data.frame(forecast)[["Point.Forecast"]]
+  
+  forecast <- c(forecast - (forecast[1]-df_train[df_train$stock_id==stock,][[features]][length(df_train[df_train$stock_id==stock,][[features]])]))
+  data_to_predict[[features]][data_to_predict$stock_id==stock] <-forecast
+  
+  }
+}
+```
+
+
+```{r}
+data_to_predict <- generate_all_features(data_to_predict)
+
+model_fit <- train(target ~ ., data = df_train, method = "lm") # Example with linear model
+
+# Predict on your test set or future data
+predictions <- predict(model_fit, data_to_predict[,setdiff(colnames(data_to_predict), "target")]) # Where new_data is the data you want to predict on
+
+```
+
+```{r}
+data_predicted <- df_train %>%
+  group_by(stock_id) %>%
+  slice_tail(n = h_) %>%
+  ungroup() 
+
+data_true <- df_test %>%
+  group_by(stock_id) %>%
+  slice_head(n = h_) %>%
+  ungroup() 
+
+data_predicted<- full_join(data_predicted, data_true)
+
+data_predicted$predicted = rep("known", times=2*n_stocks*h_)
+data_to_plot$predicted = rep("pred", times=n_stocks*h_)
+
+data_plot <- full_join(data_predicted, data_to_plot)
+one_stock_one <- 1:h_
+one_stock_two = (h_+1):(2*h_)
+time_id<-c(rep(one_stock_one, times=n_stocks), rep(one_stock_two, times=n_stocks), rep(one_stock_two, times=n_stocks))
+data_plot$time_id = time_id
+           
+
+data_plot$time_category <- ifelse(data_plot$time_id <= h_, "Before", "After")
+data_plot$time_category <- ifelse(data_plot$predicted=="pred", "Predicted", data_plot$time_category)
+
+
+
+```
+
+```{r}
+ggplot(data_plot[data_plot$stock_id==32, ], aes(x = time_id, y = wap, color = time_category)) + 
+  geom_line() +  # Draw lines
+  geom_point() +  # Optionally add points
+  scale_color_manual(values = c("Before" = "blue", "After" = "red", "Predicted" = "darkgreen")) +  # Set custom colors
+  theme_minimal() +  # Minimal theme for clarity
+  labs(x = "Time", y = "wap", title = "Time Series") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Improve readability of x-axis labels
+
+
+ggplot(data_plot[data_plot$stock_id==83, ], aes(x = time_id, y = wap, color = time_category)) + 
+  geom_line() +  # Draw lines
+  geom_point() +  # Optionally add points
+  scale_color_manual(values = c("Before" = "blue", "After" = "red", "Predicted" = "darkgreen")) +  # Set custom colors
+  theme_minimal() +  # Minimal theme for clarity
+  labs(x = "Time", y = "wap", title = "Time Series") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Improve readability of x-axis labels
+
+
+ggplot(data_plot[data_plot$stock_id==175, ], aes(x = time_id, y = wap, color = time_category)) + 
+  geom_line() +  # Draw lines
+  geom_point() +  # Optionally add points
+  scale_color_manual(values = c("Before" = "blue", "After" = "red", "Predicted" = "darkgreen")) +  # Set custom colors
+  theme_minimal() +  # Minimal theme for clarity
+  labs(x = "Time", y = "wap", title = "Time Series") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Improve readability of x-axis labels
+
+
+ggplot(data_plot[data_plot$stock_id==32, ], aes(x = time_id, y = bid_size, color = time_category)) + 
+  geom_line() +  # Draw lines
+  geom_point() +  # Optionally add points
+  scale_color_manual(values = c("Before" = "blue", "After" = "red", "Predicted" = "darkgreen")) +  # Set custom colors
+  theme_minimal() +  # Minimal theme for clarity
+  labs(x = "Time", y = "bid_size", title = "Time Series") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Improve readability of x-axis labels
+
+
+
+ggplot(data_plot[data_plot$stock_id==83, ], aes(x = time_id, y = bid_size, color = time_category)) + 
+  geom_line() +  # Draw lines
+  geom_point() +  # Optionally add points
+  scale_color_manual(values = c("Before" = "blue", "After" = "red", "Predicted" = "darkgreen")) +  # Set custom colors
+  theme_minimal() +  # Minimal theme for clarity
+  labs(x = "Time", y = "bid_size", title = "Time Series") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Improve readability of x-axis labels
+
+ggplot(data_plot[data_plot$stock_id==175, ], aes(x = time_id, y = bid_size, color = time_category)) + 
+  geom_line() +  # Draw lines
+  geom_point() +  # Optionally add points
+  scale_color_manual(values = c("Before" = "blue", "After" = "red", "Predicted" = "darkgreen")) +  # Set custom colors
+  theme_minimal() +  # Minimal theme for clarity
+  labs(x = "Time", y = "bid_size", title = "Time Series") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Improve readability of x-axis labels
+
+
+ggplot(data_plot[data_plot$stock_id==175, ], aes(x = time_id, y = ask_size, color = time_category)) + 
+  geom_line() +  # Draw lines
+  geom_point() +  # Optionally add points
+  scale_color_manual(values = c("Before" = "blue", "After" = "red", "Predicted" = "darkgreen")) +  # Set custom colors
+  theme_minimal() +  # Minimal theme for clarity
+  labs(x = "Time", y = "ask_size", title = "Time Series") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Improve readability of x-axis labels
+```
+
+## SOTA MODELS
+```{r}
+data_n$stock_id <- as.numeric(data_n$stock_id)
+df_train <- data_n[data_n$date_id <= 420, ]
+df_test <- data_n[data_n$date_id > 420, ]
+
+train_y <- df_train$target
+train_x <- df_train[, colnames(df_train) != "target"]
+test_y <- df_test$target
+test_x <- df_test[, colnames(df_test) != "target"]
+
+train_x <- train_x[, !(names(train_x) %in% c("row_id"))]
+test_x <- test_x[, !(names(test_x) %in% c("row_id"))]
+
+```
+
+
+
+
+```{r}
+####### XGBoost
+dtrain <- xgb.DMatrix(data = as.matrix(train_x), label = train_y)
+dtest <- xgb.DMatrix(data = as.matrix(test_x), label = test_y)
+params <- list(objective = "reg:squarederror", eval_metric = "mae")
+xgb_model <- xgb.train(params = params, data = dtrain, nrounds = 100)
+xgb_predictions <- predict(xgb_model, dtest)
+xgb_mae <- mean(abs(test_y - xgb_predictions))
+```
+
+
+```{r}
+library(mboost)
+
+
+####### Ajustement du modèle glmboost
+glmboost_model <- glmboost(train_y ~ ., data = train_x)
+
+# Prédiction sur l'ensemble de test
+glmboost_predictions <- predict(glmboost_model, newdata = test_x)
+
+# Calcul de MAE pour glmboost
+glmboost_mae <- mean(abs(test_y - glmboost_predictions))
+```
+
+
+```{r}
+####### Préparation des données pour LightGBM
+dtrain <- lgb.Dataset(data = as.matrix(train_x), label = train_y)
+dtest <- lgb.Dataset(data = as.matrix(test_x), label = test_y)
+
+# Configuration des paramètres de LightGBM
+params <- list(
+  objective = "regression_l1",  # MAE
+  metric = "mae",
+  num_leaves = 31,
+  learning_rate = 0.05,
+  n_estimators = 100
+)
+
+# Entraînement du modèle LightGBM
+lightgbm_model <- lgb.train(params, dtrain, valids = list(test = dtest), verbose = 1)
+
+# Prédiction avec le modèle LightGBM
+lightgbm_predictions <- predict(lightgbm_model, as.matrix(test_x))
+
+# Calcul de MAE pour LightGBM
+lightgbm_mae <- mean(abs(test_y - lightgbm_predictions))
+```
+
+
+```{r}
+# Affichage des erreurs MAE
+print(paste("XGBoost MAE:", xgb_mae))
+```
+
+
+```{r}
+print(paste("MAE pour glmboost:", glmboost_mae))
+```
+
+
+```{r}
+print(paste("MAE pour LightGBM:", lightgbm_mae))
+```
+
+
+```{r}
+# Initialisation d'une liste pour stocker les modèles
+models <- list()
+
+# Initialisation d'une liste pour stocker les erreurs MAE de chaque modèle
+mae_errors <- numeric(47)
+y_pred_short <- c()
+y_true <- c()
+times <- c()
+# Boucle sur les périodes de 10 jours, pour un total de 47 itérations
+for (i in 0:46) {
+  # Définition des intervalles de jours pour l'entraînement et le test
+  train_start_day <- i * 10
+  test_start_day <- train_start_day + 10
+  
+  # Sélection des données d'entraînement et de test
+  train_data <- filter(data_n, date_id > train_start_day & date_id <= train_start_day + 10)
+  test_data <- filter(data_n, date_id > test_start_day & date_id <= test_start_day + 10)
+  
+  # Séparation des caractéristiques et de la cible
+  train_x <- select(train_data, -target)
+  train_y <- train_data$target
+  test_x <- select(test_data, -target)
+  test_y <- test_data$target
+  
+  ####### Préparation des données pour LightGBM
+  dtrain <- lgb.Dataset(data = as.matrix(train_x), label = train_y)
+  dtest <- lgb.Dataset(data = as.matrix(test_x), label = test_y)
+  
+  # Configuration des paramètres de LightGBM
+  params <- list(
+    objective = "regression_l1",  # MAE
+    metric = "mae",
+    num_leaves = 31,
+    learning_rate = 0.05,
+    n_estimators = 100
+  )
+  
+  # Entraînement du modèle LightGBM
+  lightgbm_model <- lgb.train(params, dtrain, valids = list(test = dtest), verbose = 1)
+  
+  # Stockage du modèle
+  models[[i + 1]] <- lightgbm_model
+  
+  # Prédiction avec le modèle LightGBM
+  lightgbm_predictions <- predict(lightgbm_model, as.matrix(test_x))
+  y_pred_short<-c(y_pred_short, lightgbm_predictions)
+  y_true <- c(y_true, test_y)
+  time<-c(time, c(test_x$time_id))
+  # Calcul et stockage de l'erreur MAE
+  mae_errors[i + 1] <- mean(abs(test_y - lightgbm_predictions))
+}
+
+# Affichage des erreurs MAE
+print(mae_errors)
+
+# Vous pouvez ensuite examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
+mean(mae_errors)
+```
+
+
+```{r}
+
+for (i in 1:5) {
+  train_start_time <- i * 10*55
+  test_start_time <- train_start_time + 10*55
+  test_stop_time <- test_start_time + 10*55-1
+  plot(test_start_time:test_stop_time,y_true[(time[0]+test_start_time-1):(time[0]+test_stop_time-1)], type='l',xlab='Time',ylab='target')
+  par(new=TRUE)
+  plot(test_start_time:test_stop_time,y_pred_short[(time[0]+test_start_time-1):(time[0]+test_stop_time-1)],col='red',type='l')
+  axis(side = 4, col='red')
+  mtext(side = 4, line = 3, "pred", col='red')
+  legend("topleft",c("true","pred"),col=c("black","red"),lty=1,ncol=1,bty="n")
+    
+  
+}
+
+
+
+```
+
+
+
+
+```{r}
+# Initialisation d'une liste pour stocker les modèles
+models_new <- list()
+
+# Initialisation d'une liste pour stocker les erreurs MAE de chaque modèle
+mae_errors_new <- numeric(47)
+
+y_pred_long <- c()
+y_true <- data_n$target
+# Boucle sur les périodes de 10 jours, pour un total de 47 itérations
+for (i in 0:46) {
+  # Définition des intervalles de jours pour l'entraînement et le test
+  train_end_day <- (i + 1) * 10
+  test_start_day <- train_end_day + 1
+  test_end_day <- test_start_day + 9
+  
+  # Sélection des données d'entraînement et de test
+  train_data <- data_n[data_n$date_id <= train_end_day, ]
+  test_data <- data_n[data_n$date_id >= test_start_day & data_n$date_id <= test_end_day, ]
+  
+  # Séparation des caractéristiques et de la cible
+  train_x <- train_data[, setdiff(names(train_data), "target")]
+  train_y <- train_data[["target"]]
+  test_x <- test_data[, setdiff(names(test_data), "target")]
+  test_y <- test_data[["target"]]
+  
+  # Préparation des données pour LightGBM
+  dtrain <- lgb.Dataset(data = as.matrix(train_x), label = train_y)
+  dtest <- lgb.Dataset(data = as.matrix(test_x), label = test_y)
+  
+  # Configuration des paramètres de LightGBM
+  params <- list(
+    objective = "regression_l1",  # MAE
+    metric = "mae",
+    num_leaves = 31,
+    learning_rate = 0.05,
+    n_estimators = 100
+  )
+  
+  # Entraînement du modèle LightGBM
+  lightgbm_model <- lgb.train(params, dtrain, valids = list(test = dtest), verbose = 1)
+  
+  # Stockage du modèle
+  models_new[[i + 1]] <- lightgbm_model
+  
+  # Prédiction avec le modèle LightGBM
+  lightgbm_predictions <- predict(lightgbm_model, as.matrix(test_x))
+  y_pred_long<-c(y_pred_long, lightgbm_predictions)
+  # Calcul et stockage de l'erreur MAE
+  mae_errors_new[i + 1] <- mean(abs(test_y - lightgbm_predictions))
+}
+```
+
+
+```{r}
+# Affichage des erreurs MAE
+print(mae_errors_new)
+print(mae_errors)
+# Calcul de la moyenne des erreurs MAE
+mean(mae_errors_new)
+mean(mae_errors)
+
+# Compare the two lists element-wise
+comparison <- mae_errors >= mae_errors_new
+
+# Convert the TRUE/FALSE values to 1/0
+comparison_values <- as.integer(comparison)
+
+# Calculate the proportion of 1's in the comparison
+proportion_of_ones <- sum(comparison_values) / length(comparison_values)
+
+# Return both the comparison list and the proportion
+list(comparison_values = comparison_values, proportion_of_ones = proportion_of_ones)
+
+difference <- mae_errors - mae_errors_new
+difference
+print(max(difference))
+print(min(difference))
+print(mean(difference))
+
+
+
+```
+
+
+## BOOSTING
+
+```{r}
+data_n$stock_id <- as.numeric(data_n$stock_id)
+df_train <- data_n[data_n$date_id <= 420, ]
+df_test <- data_n[data_n$date_id > 420, ]
+
+X_train <- df_train[, all_features]
+y_train <- df_train[["target"]]
+
+X_test <- df_test[, all_features]
+y_test <- df_test[["target"]]
+```
+
+```{r}
+library(lightgbm)
+library(xgboost)
+library(Metrics)
+# library(catboost)
+
+# Supposons que 'df_train' est votre DataFrame et que 'f' est un vecteur de noms des caractéristiques
+set.seed(1)  # Assurez-vous de définir SEED
+
+# Création d'un index pour un K-Fold manuel
+folds <- createFolds(df_train[[label]], k = 5, list = TRUE, returnTrain = TRUE)
+
+best_scores_lgbm <- c()
+best_scores_xgb <- c()
+# best_scores_cat <- c()
+
+
+for(i in seq_along(folds)) {
+  train_indices <- folds[[i]]
+  test_indices <- setdiff(seq_len(nrow(df_train)), train_indices)
+  
+  dtrain_lgbm <- lgb.Dataset(data = as.matrix(df_train[train_indices, all_features]), label = df_train[train_indices, ][["target"]])
+  dval_lgbm <- lgb.Dataset(data = as.matrix(df_train[test_indices, all_features]), label = df_train[test_indices, ][["target"]])
+  
+  dtrain_xgb <- xgb.DMatrix(data = as.matrix(X_train), label = y_train)
+  dval_xgb <- xgb.DMatrix(data = as.matrix(X_test), label = y_test)
+  
+  
+  params_lgbm <- list(
+    objective = "regression",
+    metric = "mae",
+    num_leaves = 283,
+    learning_rate = 0.0087,
+    n_estimators = 5000,
+    min_child_samples = 100,
+    subsample = 0.8,
+    subsample_freq = 5,
+    colsample_bytree = 0.47,
+    reg_alpha = 10,
+    reg_lambda = 10,
+    cat_l2 = 10,
+    random_state = 1,
+    importance_type = "gain",
+    verbosity = -1
+  )
+  lgbm_model <- lgb.train(params_lgbm, dtrain_lgbm, 100, valids = list(val = dval_lgbm), early_stopping_rounds = 16, verbose = -1)
+  
+  
+  
+  params_xgb <- list(
+  objective = "reg:squarederror",
+  booster = "gbtree",
+  eta = 0.3,
+  max_depth = 6,
+  seed = 777
+  )
+  xgb_model <- xgb.train(
+  params = params_xgb,
+  data = dtrain_xgb,
+  nrounds = 100,
+  verbose = 0
+  )
+  
+  # cat_model <- catboost.train(
+  #   learn_pool = catboost.load_pool(data = X_train, label = df_train[train_indices, ][["target"]]),
+  #   params = list(
+  #     iterations = 100,
+  #     loss_function = 'MAE',
+  #     random_seed = 1
+  #   )
+  # )
+  # cat_pred <- catboost.predict(model, catboost.load_pool(data = X_test))
+  # cat_mae <- mae(df_test[train_indices, ][["target"]], cat_pred)
+  # best_scores_cat <- c(best_scores_cat, cat_mae)
+  
+  xgb_pred <- predict(xgb_model, dval_xgb)
+  xgb_mae <- mae(df_test[train_indices, ][["target"]], xgb_pred)
+  best_scores_xgb <- c(best_scores_xgb, xgb_mae)
+  
+  best_scores_lgbm <- c(best_scores_lgbm, lgbm_model$best_score)
+  
+  
+  
+}
+```
+
+
+```{r}
+# Calcul de la moyenne des meilleurs scores
+mean_best_score_lgbm <- mean(best_scores_lgbm)
+print(mean_best_score_lgbm)
+
+mean_best_score_xgb <- mean(best_scores_xgb)
+print(mean_best_score_xgb)
+
+#mean_best_score_cat <- mean(best_scores_cat)
+#print(mean_best_score_cat)
+```
+
+```{r}
+
+benchmark_mae <- mean(abs(df_train[[label]]), na.rm = TRUE)
+print(paste0("benchmark_mae: ", round(benchmark_mae, 4)))
+
+
+print(paste0("val_mae_lgmb: ", round(mean_best_score_lgbm, 4)))
+print(paste0("val_mae_xgb: ", round(mean_best_score_xgb, 4)))
+# print(paste0("val_mae_cat: ", round(mean_best_score_cat, 4)))
+
+```
+
+```{r}
+importance_matrix_xgb <- xgb.importance(model = xgb_model)
+xgb.plot.importance(importance_matrix_xgb)
+
+importance_matrix_lgbm <- lgb.importance(lgbm_model)
+lgb.plot.importance(importance_matrix_lgbm)
+```
+
+
+
+
+# Hierarchical models
+
+```{r}
+library(caret) # Pour le training des modèles
+
+
+set.seed(123) 
+
+categories <- unique(df_train$stock_id)
+models <- list()
+
+for(cat in categories) {
+  subset_df <- df_train[df_train$stock_id == cat, ]
+  
+  # Ici, nous utilisons une régression logistique comme exemple de modèle
+  model <- train(target ~ ., data = subset_df, method = "glmnet", preProcess=c("center", "scale"))
+  
+  # Stockage du modèle entraîné
+  models[[cat]] <- model
+}
+
+# Fonction pour prédire les labels d'un nouveau dataset
+predict_labels <- function(new_data) {
+  predicted_labels <- numeric(nrow(new_data))
+  for(i in seq_along(predicted_labels)) {
+    row <- new_data[i, ]
+    cat <- row$stock_id
+    model <- models[[as.character(cat)]]
+    predicted_labels[i] <- predict(model, newdata = row, type = "response")
+    
+  }
+  return(predicted_labels)
+}
+
+predicted_labels <- predict_labels(X_test)
+print(paste0("mae :", mae(actual = y_test, predicted = predicted_labels)))
+
+
+
+
+```
+
