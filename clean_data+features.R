@@ -35,7 +35,7 @@ library(forecast)
 
 data_all<-read_csv("/Users/dhia-elhaqouerfelli/Desktop/lejeune/projet prevision/optiver/train.csv", col_names =TRUE)
 
-
+summary(data_all)
 # 1. Supprimer les lignes avec des valeurs NA dans 'target'
 dfclean <- data_all %>% filter(!is.na(target))
 
@@ -86,7 +86,6 @@ cond <- function(data) {
   return(cond)
 }
 # Application de la fonction `cond` à l'ensemble de données `train`
-# Assurez-vous que l'ensemble de données `train` a été correctement chargé et préparé en R
 dfclean=cond(data_all)
 
 
@@ -203,7 +202,6 @@ weights <- setNames(as.list(weights_vector), seq_along(weights_vector) - 1)
 
 
 compute_rolling_averages <- function(df, window_sizes) {
-  # Assurez-vous que df est une matrice ou un data frame avec des valeurs numériques
   df_values <- as.matrix(df)
   num_features <- ncol(df_values)
   
@@ -360,7 +358,6 @@ other_features_lgbm <- function(df) {
       time_to_market_close = 540 - seconds_in_bucket
     )
   
-  # Assurez-vous que global_stock_id_feats est défini dans votre environnement
   for (key in names(global_stock_id_feats)) {
     df[[paste0("global_", key)]] <- df[["stock_id"]] %in% global_stock_id_feats[[key]]
   }
@@ -424,7 +421,6 @@ other_features_norm <- function(df) {
       time_to_market_close = 540 - seconds_in_bucket
     )
   
-  # Assurez-vous que global_stock_id_feats est défini dans votre environnement
   for (key in names(global_stock_id_feats)) {
     df[[paste0("global_", key)]] <- df[["stock_id"]] %in% global_stock_id_feats[[key]]
   }
@@ -481,7 +477,7 @@ pro_outliers <- function(data_frame) {
 generate_all_features <- function(df) {
   
   df <- pro_outliers(df)
-  df <- compute_rolling_averages_df(df)
+  #df <- compute_rolling_averages_df(df)
   df <- imbalance_features(df)
   df <- other_features_norm(df)
   
@@ -497,20 +493,6 @@ dfclean_feat<- data_n
 
 library(Matrix)
 
-zero_sum <- function(prices, volumes) {
-  std_error <- sqrt(volumes)
-  step <- sum(prices) / sum(std_error)
-  out <- prices - std_error * step
-  return(out)
-}
-
-pred_boost <- function(pred){
-  pred_adjusted <- zero_sum(pred, test_x$bid_size + test_x$ask_size)
-  y_min <- -64
-  y_max <- 64
-  clipped_predictions <- pmin(pmax(pred_adjusted, y_min), y_max)
-  return(clipped_predictions)
-}
 
 
 model1_lightgbm <- function(data_frame) {
@@ -591,17 +573,18 @@ dfclean_norm=other_features_norm(dfclean)
 result_norm = model1_lightgbm (dfclean_norm)
 model_norm = result_norm$model
 mae_norm = result_norm$mae_errors
-mae_out
-feature_importance_out <- lgb.importance(model_out, percentage = TRUE)
-feature_importance_out
+mae_norm
+feature_importance_norm <- lgb.importance(model_norm, percentage = TRUE)
+feature_importance_norm
 
+modelss <- list(model_initial,model_out,model_rolling,model_imb,model_norm)
 
-
-result_out = model1_lightgbm (dfclean_feat_new...)
-model_out = result_out$model
-mae_out = result_out$mae_errors
-mae_out_clipped = result_out$mae_errors_clipped
-
+result_final = model1_lightgbm (dfclean_feat)
+model_final = result_final$model
+mae_final = result_final$mae_errors
+mae_final
+feature_importance_norm <- lgb.importance(model_final, percentage = TRUE)
+feature_importance_norm
 
 
 
@@ -652,11 +635,66 @@ train_predict_lightgbm <- function(data_frame) {
     
     # Calcul et stockage de l'erreur MAE
     mae_errors[i + 1] <- mean(abs(test_y - lightgbm_predictions))
+    print(i)
   }
   
   # Retourner les modèles et les erreurs MAE dans une liste
   return(list(models = models, mae_errors = mae_errors))
 }
+
+
+
+mae_errors <- numeric(47)
+
+for (i in 0:46) {
+  # Initialisation d'une liste pour stocker les erreurs MAE de chaque modèle
+  
+  # Boucle sur les périodes de 10 jours, pour un total de 47 itérations
+
+    # Définition des intervalles de jours pour l'entraînement et le test
+    train_start_day <- i * 10 +1
+    test_start_day <- train_start_day + 10
+    test_startt <- test_start_day +1
+    test_final_day <- test_start_day +10
+    
+    # Sélectionner les données d'entraînement (10 premiers jours)
+    train_data <- data_filtred %>%
+      filter(date_id %in% train_start_day:test_start_day)
+    
+    # Sélectionner les données de test (les 10 jours suivants, soit les jours 21 à 40)
+    test_data <- data_filtred %>%
+      filter(date_id %in% test_startt:test_final_day)
+    
+    # Séparation des caractéristiques et de la cible
+    train_x <- select(train_data, -target)
+    train_y <- train_data$target
+    test_x <- select(test_data, -target)
+    test_y <- test_data$target
+    
+    ####### Ajustement du modèle glmboost
+    glmboost_model <- glmboost(train_y ~ ., data = train_x)
+    
+    # Prédiction avec le modèle LightGBM
+    glmboost_predictions <- predict(glmboost_model, newdata = test_x)
+    
+    # Calcul et stockage de l'erreur MAE
+    mae_errors[i+1] <- mean(abs(test_y - glmboost_predictions))
+    print(i)
+}
+mae_errors
+  
+
+
+
+result_initial = train_predict_glmboost(dfclean)
+models_initial = result_initial$models
+mae_initial = result_initial$mae_errors
+mae_initial
+mean(mae_initial)
+
+
+
+
 
 
 result_initial = train_predict_lightgbm(dfclean)
@@ -732,19 +770,19 @@ mae_errors <- result$mae_errors
 # Affichage des erreurs MAE
 print(mae_errors)
 
-# Vous pouvez ensuite examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
+# Examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
 mean(mae_errors)
 
 
 # Initialiser un vecteur pour stocker les noms des 10 premières features de chaque modèle
 
 top_features_all_models <- c()
-for (model in result$models) {
+for (model in models) {
   # Calculer l'importance des features pour le modèle actuel
   feature_importance <- lgb.importance(model, percentage = TRUE)
   
   # Trier les features par importance décroissante et extraire les noms des 10 premiers
-  top_25_features <- head(feature_importance[order(-feature_importance$Gain), ], 25)$Feature
+  top_25_features <- head(feature_importance[order(-feature_importance$Gain), ], 17)$Feature
   
   # Ajouter les noms des features à notre vecteur
   top_features_all_models <- c(top_features_all_models, top_25_features)
@@ -758,27 +796,60 @@ feature_frequencies_sorted <- sort(feature_frequencies, decreasing = TRUE)
 
 # Afficher les résultats
 print(feature_frequencies_sorted)
-
+dim(feature_frequencies_sorted)
 
 # Identifier les features qui répondent à ce critère
-features_to_keep <- names(feature_frequencies_sorted[feature_frequencies_sorted >= 15])
+features_to_keep <- names(feature_frequencies_sorted[feature_frequencies_sorted >= 1])
 
 # Afficher les features à conserver
-print(features_to_keep)      
+print(features_to_keep)   
+
+features_to_keep <- c(
+  "bid_price", "bid_size", "date_id", "seconds_in_bucket", "time_id",
+  "ask_price", "ask_size", "imbalance_size", "matched_size", "wap",
+  "far_price", "imbalance_buy_sell_flag", "near_price", "stock_id",
+  "reference_price", "ask_price_bid_price_wap",
+  "ask_price1", "ask_size1", "ask_size2", 
+  "bid_price1", "bid_size1", "bid_size2", "far_price_near_price_wap",
+   "liquidity_imbalance", "matched_imbalance",
+  "micro_price", "near_price_bid_price_wap", "near_price1", 
+  "non_auction_size_diff", "outlier_count", "outlier_position",
+  "reference_price_ask_price_bid_price", "reference_price_ask_price_wap",
+  "reference_price1", "size_imbalance", "spread_depth_ratio"
+)
+features_to_keep <- c("stock_id",
+    "date_id", "seconds_in_bucket", "time_id",
+    "imbalance_size", "matched_size",
+   "ask_price_bid_price_wap",
+  "ask_price1", "ask_size1", "ask_size2", 
+  "bid_price1", "bid_size1", "bid_size2", "far_price_near_price_wap",
+  "liquidity_imbalance", "matched_imbalance",
+   "near_price_bid_price_wap", "near_price1", 
+  "non_auction_size_diff",
+  "reference_price_ask_price_bid_price", "reference_price_ask_price_wap",
+  "reference_price1", "size_imbalance", "spread_depth_ratio"
+)
+
 
 # Ajouter 'target' et 'date_id' aux features à conserver
-features_to_keep_with_target_date <- c(features_to_keep, 'target', 'date_id')
+features_to_keep_with_target_date <- c(features_to_keep, 'target')
 
 # Sélectionner ces caractéristiques dans le dataframe original
-data_filtered <- select(data_n, all_of(features_to_keep_with_target_date))
+data_filtered <- select(dfclean_feat, all_of(features_to_keep_with_target_date))
 
 # Afficher les premières lignes du nouveau dataframe pour vérification
 head(data_filtered)
+
+data_filtered=pro_outliers(data_filtered)
+data_filtered=select(data_filtered, -has_outlier)
+data_filtred = select(data_filtered, -outlier_position)
 
 # Exemple d'utilisation de la fonction
 result <- train_predict_lightgbm(data_filtered)
 models <- result$models
 mae_errors <- result$mae_errors
+mae_errors
+mean(mae_errors)
 
 train_predict_lightgbm_new <- function(data_frame) {
   # Initialisation d'une liste pour stocker les modèles
@@ -837,7 +908,7 @@ train_predict_lightgbm_new <- function(data_frame) {
 
 
 
-result <- train_predict_lightgbm_new(data_filtered)
+result <- train_predict_lightgbm_new(data_filtred)
 models_new <- result$models
 mae_errors_new <- result$mae_errors
 
@@ -874,11 +945,11 @@ print(mean(difference))
 
 
 # Sélectionner les données d'entraînement (10 premiers jours)
-train_data <- data_filtered %>%
+train_data <- data_filtred %>%
   filter(date_id %in% 0:10)
 
 # Sélectionner les données de test (les 10 jours suivants, soit les jours 21 à 40)
-test_data <- data_filtered %>%
+test_data <- data_filtred %>%
   filter(date_id %in% 11:20)
 
 # Afficher un résumé pour vérifier
@@ -905,9 +976,6 @@ test_x <- test_data[, colnames(test_data) != "target"]
 
 
 library(gbm3)
-train_x$outlier_position <- as.factor(train_x$outlier_position)
-test_x$outlier_position <- as.factor(test_x$outlier_position)
-str(train_x)
 ####### Entraînement du modèle GBM
 gbm_model <- gbm(train_y ~ ., data = train_x, distribution = "gaussian", n.trees = 1000, interaction.depth = 3)
 
@@ -915,20 +983,18 @@ gbm_model <- gbm(train_y ~ ., data = train_x, distribution = "gaussian", n.trees
 gbm_predictions <- predict(gbm_model, newdata = test_x, n.trees = 1000)
 gbm_mae <- mean(abs(test_y - gbm_predictions))
 summary(gbm_model)
-
+gbm_mae
 
 ####### XGBoost
-train_x$outlier_position <- as.numeric(as.character(train_x$outlier_position))
-test_x$outlier_position <- as.numeric(as.character(test_x$outlier_position))
+
 train_x_matrix <- as.matrix(train_x)
-str(train_x)
 dtrain <- xgb.DMatrix(data = train_x_matrix, label = train_y)
 dtest <- xgb.DMatrix(data = as.matrix(test_x), label = test_y)
 params <- list(objective = "reg:squarederror", eval_metric = "mae")
 xgb_model <- xgb.train(params = params, data = dtrain, nrounds = 100)
 xgb_predictions <- predict(xgb_model, dtest)
 xgb_mae <- mean(abs(test_y - xgb_predictions))
-
+xgb_mae
 
 library(mboost)
 
@@ -942,6 +1008,7 @@ glmboost_predictions <- predict(glmboost_model, newdata = test_x)
 # Calcul de MAE pour glmboost
 glmboost_mae <- mean(abs(test_y - glmboost_predictions))
 
+glmboost_mae
 
 
 ####### Préparation des données pour LightGBM
@@ -975,6 +1042,58 @@ print(paste("XGBoost MAE:", xgb_mae))
 print(paste("MAE pour glmboost:", glmboost_mae))
 print(paste("MAE pour LightGBM:", lightgbm_mae))
 
+library(caret)
+library(lmtest)
+
+expert <- data.frame(
+  xgb = xgb_predictions,
+  gbm = gbm_predictions,
+  glmboost = glmboost_predictions,
+  lgb = lightgbm_predictions,
+  actual = test_y
+)
+
+# Créer un modèle linéaire pour combiner les prédictions
+stacking_model <- lm(actual ~ ., data = expert)
+
+# Résumé du modèle pour vérifier les coefficients
+summary(stacking_model)
+
+# Prédictions du modèle d'agrégation
+combined_predictions <- predict(stacking_model, newdata = expert)
+
+# Calcul du MAE pour les prédictions combinées
+mae_aggregated <- mean(abs(combined_predictions - expert$actual))
+print(mae_aggregated)
+
+# Tester la significativité des coefficients
+coeftest(stacking_model)
+
+experts <- data.frame(
+  xgb = xgb_predictions,
+  gbm = gbm_predictions,
+  glmboost = glmboost_predictions,
+  lgb = lightgbm_predictions
+)
+
+# On pourrait utiliser une moyenne simple ou pondérée comme méthode d'agrégation simple
+agg_pred_simple <- rowMeans(experts)
+
+# Calcul de MAPE et RMSE pour l'agrégation simple
+agg_mae <- mean(abs(test_y - agg_pred_simple))
+
+cat("Agrégation simple - MAE:", agg_mae, "\n")
+
+
+oracle(Y=test_y, experts, model = "convex", loss.type = "absolute")
+
+
+
+agg.online<- mixture(Y = test_y , experts = experts, model = 'EWA', 
+                     loss.type = "absolute", loss.gradient = F)
+summary(agg.online)
+plot(agg.online, pause=F)
+
 
 
 
@@ -987,39 +1106,24 @@ train_predict_compare <- function(train_data, test_data) {
   
 
   ####### GBM
-  train_x_gbm <- train_x
-  test_x_gbm <- test_x
-  # Exemple de réduction de niveaux en R
-  train_x_gbm$outlier_position <- as.factor(train_x_gbm$outlier_position)
-  levels_to_combine <- levels(train_x_gbm$outlier_position)[-(1:1024)]
-  train_x_gbm$outlier_position <- factor(sapply(train_x_gbm$outlier_position, function(x) if(x %in% levels_to_combine) "Autre" else x))
   
-  test_x_gbm$outlier_position <- as.factor(test_x_gbm$outlier_position)
-  levels_to_combine <- levels(test_x_gbm$outlier_position)[-(1:1024)]
-  test_x_gbm$outlier_position <- factor(sapply(test_x_gbm$outlier_position, function(x) if(x %in% levels_to_combine) "Autre" else x))
-  
-  
-  gbm_model <- gbm(train_y ~ ., data = train_x_gbm, distribution = "gaussian", n.trees = 1000, interaction.depth = 3)
-  gbm_predictions <- predict(gbm_model, newdata = test_x_gbm, n.trees = 1000)
-  gbm_mae <- mean(abs(test_y - gbm_predictions))
+  #gbm_model <- gbm(train_y ~ ., data = train_x, distribution = "gaussian", n.trees = 1000, interaction.depth = 3)
+  #gbm_predictions <- predict(gbm_model, newdata = test_x, n.trees = 1000)
+  #gbm_mae <- mean(abs(test_y - gbm_predictions))
   
   ####### XGBoost
-  train_x_xgb <- train_x
-  test_x_xgb <- test_x
-  train_x_xgb$outlier_position <- as.numeric(as.character(train_x_xgb$outlier_position))
-  test_x_xgb$outlier_position <- as.numeric(as.character(test_x_xgb$outlier_position))
-  dtrain <- xgb.DMatrix(data = as.matrix(train_x_xgb), label = train_y)
-  dtest <- xgb.DMatrix(data = as.matrix(test_x_xgb), label = test_y)
-  xgb_model <- xgb.train(params = list(objective = "reg:squarederror", eval_metric = "mae"), data = dtrain, nrounds = 100)
-  xgb_predictions <- predict(xgb_model, dtest)
-  xgb_mae <- mean(abs(test_y - xgb_predictions))
+  #dtrain <- xgb.DMatrix(data = as.matrix(train_x), label = train_y)
+  #dtest <- xgb.DMatrix(data = as.matrix(test_x), label = test_y)
+  #xgb_model <- xgb.train(params = list(objective = "reg:squarederror", eval_metric = "mae"), data = dtrain, nrounds = 100)
+  #xgb_predictions <- predict(xgb_model, dtest)
+  #xgb_mae <- mean(abs(test_y - xgb_predictions))
   
   ####### GLMBoost
   ####### Ajustement du modèle glmboost
-  glmboost_model <- glmboost(train_y ~ ., data = train_x_xgb)
+  glmboost_model <- glmboost(train_y ~ ., data = train_x)
   
   # Prédiction sur l'ensemble de test
-  glmboost_predictions <- predict(glmboost_model, newdata = test_x_xgb)
+  glmboost_predictions <- predict(glmboost_model, newdata = test_x)
   
   # Calcul de MAE pour glmboost
   glmboost_mae <- mean(abs(test_y - glmboost_predictions))
@@ -1034,26 +1138,69 @@ train_predict_compare <- function(train_data, test_data) {
   
   # Retourner les erreurs MAE pour chaque modèle
   return(list(
-    GBM_MAE = gbm_mae,
-    XGBoost_MAE = xgb_mae,
+    #GBM_MAE = gbm_mae,
+    #XGBoost_MAE = xgb_mae,
     GLMBoost_MAE = glmboost_mae,
-    LightGBM_MAE = lightgbm_mae
+    LightGBM_MAE = lightgbm_mae,
+    #GBM_pred = gbm_predictions,
+    #XGBoost_pred = xgb_predictions,
+    GLMBoost_pred = glmboost_predictions,
+    LightGBM_pred = lightgbm_predictions
   ))
 }
 
 # Exemple d'utilisation de la fonction
 # Sélectionner les données d'entraînement (10 premiers jours)
-train_data <- data_filtered %>%
+train_data <- data_filtred %>%
   filter(date_id %in% 10:20)
 
 # Sélectionner les données de test (les 10 jours suivants, soit les jours 21 à 40)
-test_data <- data_filtered %>%
+test_data <- data_filtred %>%
   filter(date_id %in% 21:30)
 
 mae_errors <- train_predict_compare(train_data, test_data)
 print(mae_errors)
-mae2=mae_errors
-mae1
+
+  
+expert <- data.frame(
+    xgb = mae_errors$XGBoost_pred,
+    gbm = mae_errors$GBM_pred,
+    glmboost = mae_errors$GLMBoost_pred,
+    lgb = mae_errors$LightGBM_pred,
+    actual = test_y
+  )
+
+# Créer un modèle linéaire pour combiner les prédictions
+stacking_model <- lm(actual ~ ., data = expert)
+
+# Prédictions du modèle d'agrégation
+combined_predictions <- predict(stacking_model, newdata = expert)
+
+# Calcul du MAE pour les prédictions combinées
+mean(abs(combined_predictions - expert$actual))
+
+# Tester la significativité des coefficients
+coeftest(stacking_model)
+
+experts <- data.frame(
+  xgb = mae_errors$XGBoost_pred,
+  gbm = mae_errors$GBM_pred,
+  glmboost = mae_errors$GLMBoost_pred,
+  lgb = mae_errors$LightGBM_pred
+)
+
+# On pourrait utiliser une moyenne simple ou pondérée comme méthode d'agrégation simple
+agg_pred_simple <- rowMeans(experts)
+
+# Calcul de MAPE et RMSE pour l'agrégation simple
+mean(abs(test_y - agg_pred_simple))
+mean(abs(combined_predictions - expert$actual))
+
+
+mae_errors$GBM_MAE
+mae_errors$XGBoost_MAE
+mae_errors$GLMBoost_MAE
+mae_errors$LightGBM_MAE
 
 
 
@@ -1068,8 +1215,13 @@ train_predict_compare_0 <- function(data_frame) {
   mae_errors_glmboost <- numeric(47)
   mae_errors_lgb <- numeric(47)
   
+  pred_gbm <- numeric(47)
+  pred_xgb <- numeric(47)
+  pred_glmboost <- numeric(47)
+  pred_lgb <- numeric(47)
+  
   # Boucle sur les périodes de 10 jours, pour un total de 47 itérations
-  for (i in 0:10) {
+  for (i in 0:2) {
     # Définition des intervalles de jours pour l'entraînement et le test
     train_start_day <- i * 10
     test_start_day <- train_start_day + 10
@@ -1086,6 +1238,11 @@ train_predict_compare_0 <- function(data_frame) {
     mae_errors_xgb[i + 1] <- mae_errors$XGBoost_MAE
     mae_errors_glmboost[i + 1] <- mae_errors$GLMBoost_MAE
     mae_errors_lgb[i + 1] <- mae_errors$LightGBM_MAE
+    
+    pred_gbm[i + 1] <- mae_errors$GBM_pred
+    pred_xgb[i + 1] <- mae_errors$XGBoost_pred
+    pred_glmboost[i + 1] <- mae_errors$GLMBoost_pred
+    pred_lgb[i + 1] <- mae_errors$LightGBM_pred
   }
   
   # Retourner les erreurs MAE pour chaque modèle et chaque période
@@ -1093,27 +1250,162 @@ train_predict_compare_0 <- function(data_frame) {
     GBM_MAE = mae_errors_gbm,
     XGBoost_MAE = mae_errors_xgb,
     GLMBoost_MAE = mae_errors_glmboost,
-    LightGBM_MAE = mae_errors_lgb
+    LightGBM_MAE = mae_errors_lgb,
+    GBM_pred = pred_gbm,
+    XGBoost_pred = pred_xgb,
+    GLMBoost_pred = pred_glmboost,
+    LightGBM_pred = pred_lgb
+  ))
+}
+
+train_predict_compare_00 <- function(data_frame) {
+  # Initialisation de listes pour stocker les erreurs MAE de chaque modèle pour toutes les périodes
+  mae_errors_gbm <- numeric(47)
+  mae_errors_xgb <- numeric(47)
+  mae_errors_glmboost <- numeric(47)
+  mae_errors_lgb <- numeric(47)
+  mae_aggregated <- numeric(47)
+  agg_mae <- numeric(47)
+  
+  # Boucle sur les périodes de 10 jours, pour un total de 47 itérations
+  for (i in 0:46) {
+    # Définition des intervalles de jours pour l'entraînement et le test
+    train_start_day <- i * 10
+    test_start_day <- train_start_day + 10
+    
+    
+    
+    # Sélection des données d'entraînement et de test en utilisant data_frame
+    train_data <- filter(data_frame, date_id > train_start_day & date_id <= train_start_day + 10)
+    test_data <- filter(data_frame, date_id > test_start_day & date_id <= test_start_day + 10)
+    test_y <- test_data$target
+
+    # Appliquer la fonction train_predict_compare pour les données d'entraînement et de test actuelles
+    mae_errors <- train_predict_compare(train_data, test_data)
+    
+    # Stocker les erreurs MAE pour chaque modèle
+    #mae_errors_gbm[i + 1] <- mae_errors$GBM_MAE
+    #mae_errors_xgb[i + 1] <- mae_errors$XGBoost_MAE
+    mae_errors_glmboost[i + 1] <- mae_errors$GLMBoost_MAE
+    mae_errors_lgb[i + 1] <- mae_errors$LightGBM_MAE
+    
+    expert <- data.frame(
+      #xgb = mae_errors$XGBoost_pred,
+      #gbm = mae_errors$GBM_pred,
+      glmboost = mae_errors$GLMBoost_pred,
+      lgb = mae_errors$LightGBM_pred,
+      actual = test_y
+    )
+    
+    # Créer un modèle linéaire pour combiner les prédictions
+    stacking_model <- lm(actual ~ ., data = expert)
+    
+    # Prédictions du modèle d'agrégation
+    combined_predictions <- predict(stacking_model, newdata = expert)
+    
+    # Calcul du MAE pour les prédictions combinées
+    mae_aggregated[i + 1] <- mean(abs(combined_predictions - expert$actual))
+    
+    # Tester la significativité des coefficients
+    coeftest(stacking_model)
+    
+    experts <- data.frame(
+      #xgb = mae_errors$XGBoost_pred,
+      #gbm = mae_errors$GBM_pred,
+      glmboost = mae_errors$GLMBoost_pred,
+      lgb = mae_errors$LightGBM_pred
+    )
+    
+    # On pourrait utiliser une moyenne simple ou pondérée comme méthode d'agrégation simple
+    agg_pred_simple <- rowMeans(experts)
+    
+    # Calcul de MAPE et RMSE pour l'agrégation simple
+    agg_mae[i + 1] <- mean(abs(test_y - agg_pred_simple))
+    print(i)
+  }
+  
+  # Retourner les erreurs MAE pour chaque modèle et chaque période
+  return(list(
+    #GBM_MAE = mae_errors_gbm,
+    #XGBoost_MAE = mae_errors_xgb,
+    GLMBoost_MAE = mae_errors_glmboost,
+    LightGBM_MAE = mae_errors_lgb,
+    MAE_aggreg = mae_aggregated,
+    AGG_mae_simple = agg_mae
   ))
 }
 
 # Appliquer la fonction pour comparer les modèles sur les 47 périodes
-resultats_mae <- train_predict_compare_0(data_filtered)
+resultats_mae <- train_predict_compare_00(data_filtred)
+resultats_mae <- train_predict_compare_00(dfclean)
+
+resultats_mae
 
 # Afficher les erreurs MAE pour chaque modèle et chaque période
-print(resultats_mae$GBM_MAE)
-print(resultats_mae$XGBoost_MAE)
-print(resultats_mae$GLMBoost_MAE)
-print(resultats_mae$LightGBM_MAE)
-
-sum(resultats_mae$GBM_MAE)/11
-sum(resultats_mae$XGBoost_MAE)/11
-sum(resultats_mae$GLMBoost_MAE)/11
-sum(resultats_mae$LightGBM_MAE)/11
+mean(resultats_mae$GBM_MAE)
+mean(resultats_mae$XGBoost_MAE)
+mean(resultats_mae$GLMBoost_MAE)
+mean(resultats_mae$LightGBM_MAE)
+mean(resultats_mae$MAE_aggreg)
+mean(resultats_mae$AGG_mae_simple)
 
 
 
 
+
+experts <- numeric(47)
+expert <- numeric(47)
+mae_aggregated <- numeric(47)
+agg_mae <- numeric(47)
+# Boucle sur les périodes de 10 jours, pour un total de 47 itérations
+for (i in 0:46) {
+  # Définition des intervalles de jours pour l'entraînement et le test
+  train_start_day <- i * 10
+  test_start_day <- train_start_day + 10
+  
+  # Sélection des données d'entraînement et de test en utilisant data_frame
+  train_data <- filter(data_frame, date_id > train_start_day & date_id <= train_start_day + 10)
+  test_data <- filter(data_frame, date_id > test_start_day & date_id <= test_start_day + 10)
+  train_y <- train_data$target
+  train_x <- select(train_data, -target)
+  test_y <- test_data$target
+  test_x <- select(test_data, -target)
+  
+  
+  expert <- data.frame(
+    xgb = pred_xgb[i + 1],
+    gbm = pred_gbm[i + 1],
+    glmboost = pred_glmboost[i + 1],
+    lgb = pred_lgb[i + 1],
+    actual = test_y
+  )
+  
+  # Créer un modèle linéaire pour combiner les prédictions
+  stacking_model <- lm(actual ~ ., data = expert)
+  
+  # Prédictions du modèle d'agrégation
+  combined_predictions <- predict(stacking_model, newdata = expert)
+  
+  # Calcul du MAE pour les prédictions combinées
+  mae_aggregated[i + 1] <- mean(abs(combined_predictions - expert$actual))
+
+  # Tester la significativité des coefficients
+  coeftest(stacking_model)
+  
+  experts <- data.frame(
+    xgb = pred_xgb[i + 1],
+    gbm = pred_gbm[i + 1],
+    glmboost = pred_glmboost[i + 1],
+    lgb = pred_lgb[i + 1]
+  )
+  
+  # On pourrait utiliser une moyenne simple ou pondérée comme méthode d'agrégation simple
+  agg_pred_simple <- rowMeans(experts)
+  
+  # Calcul de MAPE et RMSE pour l'agrégation simple
+  agg_mae[i + 1] <- mean(abs(test_y - agg_pred_simple))
+
+}
 
 
 train_predict_compare_new <- function(data_frame) {
@@ -1346,13 +1638,26 @@ sum(mae_errors_1)/20
 
 
 
-df_train <- data_filtered[data_filtered$date_id <= 420, ]
-df_test <- data_filtered[data_filtered$date_id > 420, ]
+df_train <- data_filtered[data_filtred$date_id <= 420, ]
+df_test <- data_filtered[data_filtred$date_id > 420, ]
 
 train_y <- df_train$target
 train_x <- df_train[, colnames(df_train) != "target"]
 test_y <- df_test$target
 test_x <- df_test[, colnames(df_test) != "target"]
+
+
+####### Ajustement du modèle glmboost
+glmboost_model <- glmboost(train_y ~ ., data = train_x)
+
+# Prédiction sur l'ensemble de test
+glmboost_predictions <- predict(glmboost_model, newdata = test_x)
+
+# Calcul de MAE pour glmboost
+glmboost_mae <- mean(abs(test_y - glmboost_predictions))
+
+glmboost_mae
+
 
 ####### Préparation des données pour LightGBM
 dtrain <- lgb.Dataset(data = as.matrix(train_x), label = train_y)
@@ -1373,7 +1678,7 @@ lightgbm_model <- lgb.train(params, dtrain, valids = list(test = dtest), verbose
 # Prédiction avec le modèle LightGBM
 lightgbm_predictions <- predict(lightgbm_model, as.matrix(test_x))
 
-mae_errors_3_0 <- mean(abs(test_y - lightgbm_predictions))
+mean(abs(test_y - lightgbm_predictions))
 
 
 clipped_predictions <- pred_boost(lightgbm_predictions)
@@ -1485,7 +1790,7 @@ print(paste("MAE pour LightGBM:", lightgbm_mae))
 
 
 
-# Supposons que votre dataframe est data_filtered et que vous voulez exclure la colonne 'target'
+# On exclue la colonne 'target'
 predictive_variables <- names(dfclean)[names(dfclean) != "target"]
 
 # Afficher les noms des variables prédictives
@@ -1541,7 +1846,7 @@ library(ggplot2)
 library(reshape2)
 library(corrplot)
 
-# Assurez-vous que dfclean contient uniquement des données numériques
+# Faut que dfclean contient uniquement des données numériques
 dfclean_numeric <- dfclean[sapply(dfclean, is.numeric)]
 
 # Calculer la matrice de corrélation
@@ -1554,7 +1859,6 @@ corrplot(cor_matrix, method = "color", type = "upper", order = "hclust",
 )
 
 
-# Supposons que vous ayez un vecteur de corrélations nommé target_correlations comme suit
 target_correlations <- c(stock_id = 0.0001299739, date_id = 0.0008955521, 
                          seconds_in_bucket = -0.0022073161, imbalance_size = -0.0011896780, 
                          imbalance_buy_sell_flag = 0.0151030069, reference_price = -0.0208998767, 
@@ -1668,3 +1972,133 @@ target_correlations_spearman
 seq_along(variable_names)
 correlations_df
 correlations_df_sorted 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+data_fil <- data_filtred
+data_fil$stock_id <- as.numeric(data_fil$stock_id)
+data_fil$auction_size <- dfclean_feat$auction_size
+data_fil$price_spread <- dfclean_feat$price_spread
+
+# Initialisation d'une liste pour stocker les erreurs MAE de chaque modèle
+mae_errors_gam <- numeric(47)
+mae_errors_Lgbm <- numeric(47)
+mae_errors_GLM <- numeric(47)
+mae_errors_agg1<- numeric(47)
+mae_errors_agg2<- numeric(47)
+
+# Boucle sur les périodes de 10 jours, pour un total de 47 itérations
+for (i in 0:46) {
+  print(i)
+  # Définition des intervalles de jours pour l'entraînement et le test
+  train_start_day <- i * 10
+  test_start_day <- train_start_day + 10
+  
+  # Sélection des données d'entraînement et de test
+  train_data <- filter(data_fil, date_id > train_start_day & date_id <= train_start_day + 10)
+  test_data <- filter(data_fil, date_id > test_start_day & date_id <= test_start_day + 10)
+  
+  # Séparation des caractéristiques et de la cible
+  train_x <- select(train_data, -target)
+  train_y <- train_data$target
+  test_x <- select(test_data, -target)
+  test_y <- test_data$target
+  
+  #formula_string <- as.formula(paste("target ~", paste("s(", features_init, ", k=10)", collapse = " + ")))
+  formula_string <- target ~ s(ask_price1, k=10) + s(bid_price1, k=10) + s(seconds_in_bucket, k=10) + s(auction_size, k=8) + s(matched_size, k=8) + s(liquidity_imbalance, k=8) + s(price_spread, k=8)
+  gam1<-gam(formula_string, data=train_data, select=TRUE)
+
+  
+  # Prédiction avec le modèle LightGBM
+  forecast<-predict(gam1, newdata=test_x) 
+
+  # Calcul et stockage de l'erreur MAE
+  mae_errors_gam[i + 1] <- mean(abs(test_y - forecast))
+  
+  ####### Ajustement du modèle glmboost
+  glmboost_model <- glmboost(train_y ~ ., data = train_x)
+  
+  # Prédiction sur l'ensemble de test
+  glmboost_predictions <- predict(glmboost_model, newdata = test_x)
+  
+  # Calcul de MAE pour glmboost
+  mae_errors_GLM[i + 1] <- mean(abs(test_y - glmboost_predictions))
+  
+  
+  
+  
+  ####### Préparation des données pour LightGBM
+  dtrain <- lgb.Dataset(data = as.matrix(train_x), label = train_y)
+  dtest <- lgb.Dataset(data = as.matrix(test_x), label = test_y)
+  
+  # Configuration des paramètres de LightGBM
+  params <- list(
+    objective = "regression_l1",  # Utiliser MAE comme objectif
+    metric = "mae",
+    num_leaves = 31,
+    learning_rate = 0.05,
+    n_estimators = 100
+  )
+  
+  # Entraînement du modèle LightGBM
+  lightgbm_model <- lgb.train(params, dtrain, valids = list(test = dtest), verbose = 0) 
+  
+  # Prédiction avec le modèle LightGBM
+  lightgbm_predictions <- predict(lightgbm_model, as.matrix(test_x))
+  
+  mae_errors_Lgbm[i + 1] <-mean(abs(test_y - lightgbm_predictions))
+  
+  expert <- data.frame(
+    gam = forecast,
+    glmboost = glmboost_predictions,
+    lgb = lightgbm_predictions,
+    actual = test_y
+  )
+  
+  # Créer un modèle linéaire pour combiner les prédictions
+  stacking_model <- lm(actual ~ ., data = expert)
+  
+  # Prédictions du modèle d'agrégation
+  combined_predictions <- predict(stacking_model, newdata = expert)
+  
+  # Calcul du MAE pour les prédictions combinées
+  mae_errors_agg1[i + 1] <- mean(abs(combined_predictions - expert$actual))
+  
+  # Tester la significativité des coefficients
+  coeftest(stacking_model)
+  
+  experts <- data.frame(
+    gam = forecast,
+    glmboost = glmboost_predictions,
+    lgb = lightgbm_predictions)
+  # On pourrait utiliser une moyenne simple ou pondérée comme méthode d'agrégation simple
+  agg_pred_simple <- rowMeans(experts)
+  
+  # Calcul de MAPE et RMSE pour l'agrégation simple
+  mae_errors_agg2[i + 1] <- mean(abs(test_y - agg_pred_simple))
+  
+}
+?rowMeans
+# Affichage des erreurs MAE
+mean(mae_errors_gam)
+mean(mae_errors_Lgbm) 
+mean(mae_errors_GLM)
+mean(mae_errors_agg1)
+mean(mae_errors_agg2)
+# Examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
+mean(mae_errors)

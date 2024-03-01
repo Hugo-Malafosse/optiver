@@ -4,10 +4,6 @@
 
 
 
-
-
-
-
 rm(list=objects())
 library(rpart)
 library(magrittr)
@@ -264,7 +260,6 @@ cond <- function(data) {
   return(cond)
 }
 # Application de la fonction `cond` à l'ensemble de données `train`
-# Assurez-vous que l'ensemble de données `train` a été correctement chargé et préparé en R
 dfclean=cond(data_all)
 
 
@@ -323,6 +318,22 @@ for (feature in num_features) {
 # Utiliser grid.arrange pour combiner et afficher tous les graphiques
 do.call(gridExtra::grid.arrange, c(plot_list, ncol=2))
 
+
+# Liste pour stocker les objets ggplot
+plot_list <- list()
+
+# Créer un objet ggplot pour chaque caractéristique numérique et l'ajouter à la liste
+for (feature in num_features) {
+  p <- ggplot(dfclean, aes_string(y = feature)) +
+    geom_boxplot(fill = "blue", alpha = 0.5) +
+    labs(title = paste(feature, "Distribution")) +
+    theme_minimal() +
+    coord_flip()  # Utilisez coord_flip() pour dessiner des boxplots horizontaux
+  plot_list[[feature]] <- p
+}
+
+# Utiliser grid.arrange pour combiner et afficher tous les graphiques
+do.call(gridExtra::grid.arrange, c(plot_list, ncol=2))
 
 
 # Pour atténuer l'effet des valeurs extrêmes
@@ -474,7 +485,6 @@ print(paste("XGBoost MAE:", xgb_mae))
 print(paste("MAE pour glmboost:", glmboost_mae))
 print(paste("MAE pour LightGBM:", lightgbm_mae))
 
-boxplot(dfclean$imbalance_size)
 
 
 
@@ -530,7 +540,7 @@ for (i in 0:46) {
 # Affichage des erreurs MAE
 print(mae_errors)
 
-# Vous pouvez ensuite examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
+# Examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
 mean(mae_errors)
 
 
@@ -670,7 +680,7 @@ ggplot() +
                     name = "Légende", 
                     labels = c("Data originale", "Data LGBM", "Méthode simple")) +
   coord_cartesian(xlim = c(0, 3)) +
-  theme(legend.position = "bottom") # Vous pouvez changer la position de la légende si nécessaire
+  theme(legend.position = "bottom") # Changer la position de la légende si nécessaire
 
 # Densité pour 'near_price' avant et après le remplacement
 
@@ -684,7 +694,7 @@ ggplot() +
                     name = "Légende", 
                     labels = c("Data originale", "Data LGBM", "Méthode simple")) +
   coord_cartesian(xlim = c(0.9, 1.1)) +
-  theme(legend.position = "bottom") # Vous pouvez changer la position de la légende si nécessaire
+  theme(legend.position = "bottom") # Changer la position de la légende si nécessaire
 
 
 # Moyenne et variance pour 'far_price' avant et après
@@ -807,7 +817,7 @@ for (i in 0:46) {
 # Affichage des erreurs MAE
 print(mae_errors_out)
 print(mae_errors)
-# Vous pouvez ensuite examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
+# Examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
 mean(mae_errors_out)
 mean(mae_errors)
 
@@ -847,7 +857,7 @@ for (i in 0:46) {
   
   # Sélection des données d'entraînement et de test
   train_data <- dfclean_outliers[dfclean_outliers$date_id <= train_end_day, ]
-  test_data <- dfclean_outliers[dfclean_outliers$date_id >= test_start_day & dfclean$date_id <= test_end_day, ]
+  test_data <- dfclean_outliers[dfclean_outliers$date_id >= test_start_day & dfclean_outliers$date_id <= test_end_day, ]
   
   # Séparation des caractéristiques et de la cible
   train_x <- train_data[, setdiff(names(train_data), "target")]
@@ -928,7 +938,24 @@ detect_outliers <- function(data_frame) {
 # Exemple d'utilisation avec le dataframe `data_all`
 # Remplacer `data_all` par le nom de votre dataframe
 outlier_flags <- detect_outliers(dfclean)
+outlier_flags$stock_id <- dfclean$stock_id
 print(outlier_flags)
+# Calculer le nombre total d'outliers pour chaque stock_id
+outliers_per_stock <- aggregate(. ~ stock_id, data = outlier_flags, FUN = sum, na.rm = TRUE)
+
+# Afficher le résultat
+print(outliers_per_stock)
+
+# Calculer le nombre total d'outliers pour chaque stock_id en sommant les valeurs de chaque ligne (à l'exception de la première colonne qui est stock_id)
+outliers_per_stock_total <- transform(outliers_per_stock, Total_Outliers = rowSums(outliers_per_stock[,-1]))
+
+# Sélectionner uniquement les colonnes stock_id et Total_Outliers pour le résumé final
+final_summary <- outliers_per_stock_total[, c("stock_id", "Total_Outliers")]
+
+# Afficher le résumé final
+print(final_summary)
+
+
 
 # Filtrez pour ne garder que les lignes où 'far_price' est un outlier
 outlier_rows <- outlier_flags %>% 
@@ -1003,8 +1030,6 @@ outlier_flags_with <- outlier_flags[row_has_outlier, ]
 col_has_outlier <- apply(outlier_flags, 2, any) # `any` vérifie si au moins un TRUE existe dans la colonne
 data_filtered_with_outliers <- data_with_outliers[, col_has_outlier]
 outlier_filtered_flags_with <- outlier_flags_with[,col_has_outlier ]
-
-
 
 
 
@@ -1305,8 +1330,8 @@ for (i in 0:46) {
   test_end_day <- test_start_day + 9
   
   # Sélection des données d'entraînement et de test
-  train_data <- dfclean_count_outliers[dfclean_outliers$date_id <= train_end_day, ]
-  test_data <- dfclean_count_outliers[dfclean_outliers$date_id >= test_start_day & dfclean$date_id <= test_end_day, ]
+  train_data <- dfclean_count_outliers[dfclean_count_outliers$date_id <= train_end_day, ]
+  test_data <- dfclean_count_outliers[dfclean_count_outliers$date_id >= test_start_day & dfclean_count_outliers$date_id <= test_end_day, ]
   
   # Séparation des caractéristiques et de la cible
   train_x <- train_data[, setdiff(names(train_data), "target")]
@@ -1344,7 +1369,7 @@ for (i in 0:46) {
 # Affichage des erreurs MAE
 print(mae_errors_out_count)
 print(mae_errors_new_out_count)
-# Vous pouvez ensuite examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
+# Examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
 mean(mae_errors_out_count)
 mean(mae_errors_new_out_count)
 
@@ -1391,3 +1416,279 @@ mean(mae_errors_out_count)
 mean(mae_errors_out)
 mean(mae_errors)
 
+
+
+
+
+
+
+pro_outliers <- function(data_frame) {
+  # Créer un dataframe pour stocker les indicateurs d'outliers
+  outliers <- data_frame
+  
+  # Parcourir chaque colonne du dataframe
+  for(col_name in names(data_frame)) {
+    # Vérifier si la colonne est numérique
+    if(is.numeric(data_frame[[col_name]])) {
+      # Calculer Q1, Q3 et IQR
+      Q1 <- quantile(data_frame[[col_name]], 0.25, na.rm = TRUE)
+      Q3 <- quantile(data_frame[[col_name]], 0.75, na.rm = TRUE)
+      IQR <- Q3 - Q1
+      
+      # Calculer les bornes pour déterminer les outliers
+      lower_bound <- Q1 - 1.5 * IQR
+      upper_bound <- Q3 + 1.5 * IQR
+      
+      # Marquer les valeurs en dehors des bornes comme TRUE (outlier)
+      outliers[[col_name]] <- data_frame[[col_name]] < lower_bound | data_frame[[col_name]] > upper_bound
+    } else {
+      # Pour les colonnes non numériques, marquer toutes les valeurs comme FALSE
+      outliers[[col_name]] <- FALSE
+    }
+  }
+  
+  # Convertir les valeurs logiques en valeurs numériques pour le calcul
+  numeric_outliers <- as.data.frame(lapply(outliers, as.integer))
+  
+  # Ajouter une colonne 'has_outlier' pour marquer les lignes avec au moins un outlier
+  data_frame$has_outlier <- apply(numeric_outliers, 1, function(row) any(row == 1))
+  
+  # Calculer et ajouter le nombre d'outliers par ligne
+  data_frame$outlier_count <- rowSums(numeric_outliers == 1, na.rm = TRUE)
+  
+  # Ajouter une colonne indiquant la position de l'outlier
+  data_frame$outlier_position <- apply(numeric_outliers, 1, function(row) {
+    paste0(row, collapse = "")
+  })
+  
+  return(data_frame)
+}
+
+
+
+# Appliquer la fonction au dataframe 'data_all' 
+dfclean_pro_outliers <- pro_outliers(dfclean)
+print(head(dfclean_pro_outliers))
+
+# Initialisation d'une liste pour stocker les modèles
+models_pro <- list()
+
+# Initialisation d'une liste pour stocker les erreurs MAE de chaque modèle
+mae_errors_pro <- numeric(47)
+
+# Boucle sur les périodes de 10 jours, pour un total de 47 itérations
+for (i in 0:46) {
+  # Définition des intervalles de jours pour l'entraînement et le test
+  train_start_day <- i * 10
+  test_start_day <- train_start_day + 10
+  
+  # Sélection des données d'entraînement et de test
+  train_data <- filter(dfclean_pro_outliers, date_id > train_start_day & date_id <= train_start_day + 10)
+  test_data <- filter(dfclean_pro_outliers, date_id > test_start_day & date_id <= test_start_day + 10)
+  
+  # Séparation des caractéristiques et de la cible
+  train_x <- select(train_data, -target)
+  train_y <- train_data$target
+  test_x <- select(test_data, -target)
+  test_y <- test_data$target
+  
+  ####### Préparation des données pour LightGBM
+  dtrain <- lgb.Dataset(data = as.matrix(train_x), label = train_y)
+  dtest <- lgb.Dataset(data = as.matrix(test_x), label = test_y)
+  
+  # Configuration des paramètres de LightGBM
+  params <- list(
+    objective = "regression_l1",  # MAE
+    metric = "mae",
+    num_leaves = 31,
+    learning_rate = 0.05,
+    n_estimators = 100
+  )
+  
+  # Entraînement du modèle LightGBM
+  lightgbm_model <- lgb.train(params, dtrain, valids = list(test = dtest), verbose = 1)
+  
+  # Stockage du modèle
+  models_pro[[i + 1]] <- lightgbm_model
+  
+  # Prédiction avec le modèle LightGBM
+  lightgbm_predictions <- predict(lightgbm_model, as.matrix(test_x))
+  
+  # Calcul et stockage de l'erreur MAE
+  mae_errors_pro[i + 1] <- mean(abs(test_y - lightgbm_predictions))
+}
+
+
+
+# Initialisation d'une liste pour stocker les modèles
+models_new_pro <- list()
+
+# Initialisation d'une liste pour stocker les erreurs MAE de chaque modèle
+mae_errors_new_pro <- numeric(47)
+
+# Boucle sur les périodes de 10 jours, pour un total de 47 itérations
+for (i in 0:46) {
+  # Définition des intervalles de jours pour l'entraînement et le test
+  train_end_day <- (i + 1) * 10
+  test_start_day <- train_end_day + 1
+  test_end_day <- test_start_day + 9
+  
+  # Sélection des données d'entraînement et de test
+  train_data <- dfclean_pro_outliers[dfclean_pro_outliers$date_id <= train_end_day, ]
+  test_data <- dfclean_pro_outliers[dfclean_pro_outliers$date_id >= test_start_day & dfclean_pro_outliers$date_id <= test_end_day, ]
+  
+  # Séparation des caractéristiques et de la cible
+  train_x <- train_data[, setdiff(names(train_data), "target")]
+  train_y <- train_data[["target"]]
+  test_x <- test_data[, setdiff(names(test_data), "target")]
+  test_y <- test_data[["target"]]
+  
+  # Préparation des données pour LightGBM
+  dtrain <- lgb.Dataset(data = as.matrix(train_x), label = train_y)
+  dtest <- lgb.Dataset(data = as.matrix(test_x), label = test_y)
+  
+  # Configuration des paramètres de LightGBM
+  params <- list(
+    objective = "regression_l1",  # MAE
+    metric = "mae",
+    num_leaves = 31,
+    learning_rate = 0.05,
+    n_estimators = 100
+  )
+  
+  # Entraînement du modèle LightGBM
+  lightgbm_model <- lgb.train(params, dtrain, valids = list(test = dtest), verbose = 1)
+  
+  # Stockage du modèle
+  models_new_pro[[i + 1]] <- lightgbm_model
+  
+  # Prédiction avec le modèle LightGBM
+  lightgbm_predictions <- predict(lightgbm_model, as.matrix(test_x))
+  
+  # Calcul et stockage de l'erreur MAE
+  mae_errors_new_pro[i + 1] <- mean(abs(test_y - lightgbm_predictions))
+}
+
+
+# Affichage des erreurs MAE
+print(mae_errors_pro)
+print(mae_errors_new_pro)
+# Examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
+mean(mae_errors_pro)
+mean(mae_errors_new_pro)
+
+# Compare the two lists element-wise
+comparison_pro <- mae_errors_pro >= mae_errors_new_pro
+
+# Convert the TRUE/FALSE values to 1/0
+comparison_values_pro <- as.integer(comparison_pro)
+
+# Calculate the proportion of 1's in the comparison
+proportion_of_ones_pro <- sum(comparison_values_pro) / length(comparison_values_pro)
+
+# Return both the comparison list and the proportion
+list(comparison_values_pro = comparison_values_pro, proportion_of_ones_pro = proportion_of_ones_pro)
+
+difference <- mae_errors_pro - mae_errors_new_pro
+difference
+print(max(difference))
+print(min(difference))
+print(mean(difference))
+
+
+
+
+
+
+# Affichage des erreurs MAE
+print(mae_errors_new_pro)
+print(mae_errors_new_out_count)
+print(mae_errors_new_out)
+print(mae_errors_new)
+
+print(mae_errors_pro)
+print(mae_errors_out_count)
+print(mae_errors_out)
+print(mae_errors)
+
+
+# Calcul de la moyenne des erreurs MAE
+mean(mae_errors_new_pro)
+mean(mae_errors_new_out_count)
+mean(mae_errors_new_out)
+mean(mae_errors_new)
+
+mean(mae_errors_pro)
+mean(mae_errors_out_count)
+mean(mae_errors_out)
+mean(mae_errors)
+
+ 
+
+
+
+
+
+
+train_predict_compare <- function(train_data, test_data) {
+  # Préparation des données
+  train_y <- train_data$target
+  train_x <- select(train_data, -target)
+  test_y <- test_data$target
+  test_x <- select(test_data, -target)
+  
+  
+  ####### GBM
+  train_x_gbm <- train_x
+  test_x_gbm <- test_x
+  # Exemple de réduction de niveaux en R
+  train_x_gbm$outlier_position <- as.factor(train_x_gbm$outlier_position)
+  levels_to_combine <- levels(train_x_gbm$outlier_position)[-(1:1024)]
+  train_x_gbm$outlier_position <- factor(sapply(train_x_gbm$outlier_position, function(x) if(x %in% levels_to_combine) "Autre" else x))
+  
+  test_x_gbm$outlier_position <- as.factor(test_x_gbm$outlier_position)
+  levels_to_combine <- levels(test_x_gbm$outlier_position)[-(1:1024)]
+  test_x_gbm$outlier_position <- factor(sapply(test_x_gbm$outlier_position, function(x) if(x %in% levels_to_combine) "Autre" else x))
+  
+  
+  gbm_model <- gbm(train_y ~ ., data = train_x_gbm, distribution = "gaussian", n.trees = 1000, interaction.depth = 3)
+  gbm_predictions <- predict(gbm_model, newdata = test_x_gbm, n.trees = 1000)
+  gbm_mae <- mean(abs(test_y - gbm_predictions))
+  
+  ####### XGBoost
+  train_x_xgb <- train_x
+  test_x_xgb <- test_x
+  train_x_xgb$outlier_position <- as.numeric(as.character(train_x_xgb$outlier_position))
+  test_x_xgb$outlier_position <- as.numeric(as.character(test_x_xgb$outlier_position))
+  dtrain <- xgb.DMatrix(data = as.matrix(train_x_xgb), label = train_y)
+  dtest <- xgb.DMatrix(data = as.matrix(test_x_xgb), label = test_y)
+  xgb_model <- xgb.train(params = list(objective = "reg:squarederror", eval_metric = "mae"), data = dtrain, nrounds = 100)
+  xgb_predictions <- predict(xgb_model, dtest)
+  xgb_mae <- mean(abs(test_y - xgb_predictions))
+  
+  ####### GLMBoost
+  ####### Ajustement du modèle glmboost
+  glmboost_model <- glmboost(train_y ~ ., data = train_x_xgb)
+  
+  # Prédiction sur l'ensemble de test
+  glmboost_predictions <- predict(glmboost_model, newdata = test_x_xgb)
+  
+  # Calcul de MAE pour glmboost
+  glmboost_mae <- mean(abs(test_y - glmboost_predictions))
+  
+  
+  ####### LightGBM
+  dtrain_lgb <- lgb.Dataset(data = as.matrix(train_x), label = train_y)
+  dtest_lgb <- lgb.Dataset(data = as.matrix(test_x), label = test_y)
+  lightgbm_model <- lgb.train(params = list(objective = "regression_l1", metric = "mae", num_leaves = 31, learning_rate = 0.05, n_estimators = 100), dtrain_lgb, valids = list(test = dtest_lgb), verbose = 0)
+  lightgbm_predictions <- predict(lightgbm_model, as.matrix(test_x))
+  lightgbm_mae <- mean(abs(test_y - lightgbm_predictions))
+  
+  # Retourner les erreurs MAE pour chaque modèle
+  return(list(
+    GBM_MAE = gbm_mae,
+    XGBoost_MAE = xgb_mae,
+    GLMBoost_MAE = glmboost_mae,
+    LightGBM_MAE = lightgbm_mae
+  ))
+}

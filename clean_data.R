@@ -269,7 +269,6 @@ cond <- function(data) {
   return(cond)
 }
 # Application de la fonction `cond` à l'ensemble de données `train`
-# Assurez-vous que l'ensemble de données `train` a été correctement chargé et préparé en R
 dfclean=cond(data_all)
 
 
@@ -569,7 +568,7 @@ for (i in 0:46) {
 # Affichage des erreurs MAE
 print(mae_errors)
 
-# Vous pouvez ensuite examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
+# Examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
 mean(mae_errors)
 
 
@@ -747,7 +746,7 @@ ggplot() +
                     name = "Légende:", 
                     labels = c("Data LGBM", "Data originale", "Méthode simple")) +
   coord_cartesian(xlim = c(0, 3)) +
-  theme(legend.position = "bottom") # Vous pouvez changer la position de la légende si nécessaire
+  theme(legend.position = "bottom") # Changer la position de la légende si nécessaire
 
 # Densité pour 'near_price' avant et après le remplacement
 
@@ -761,7 +760,7 @@ ggplot() +
                     name = "Légende:", 
                     labels = c("Data LGBM", "Data originale", "Méthode simple")) +
   coord_cartesian(xlim = c(0.9, 1.1)) +
-  theme(legend.position = "bottom") # Vous pouvez changer la position de la légende si nécessaire
+  theme(legend.position = "bottom") # Changer la position de la légende si nécessaire
 
 
 # Moyenne et variance pour 'far_price' avant et après
@@ -920,7 +919,7 @@ for (i in 0:46) {
 # Affichage des erreurs MAE
 print(mae_errors_out)
 print(mae_errors)
-# Vous pouvez ensuite examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
+# Examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
 mean(mae_errors_out)
 mean(mae_errors)
 
@@ -1464,7 +1463,6 @@ anomalies_indices <- which(abs(residus_arima) > seuil_anomalie)
 dates_anomalies <- time(dfclean)[anomalies_indices]
 
 # Analyse contextuelle des anomalies
-# Supposons que vous avez un dataframe 'data_financial' avec une colonne 'date' et d'autres informations pertinentes
 
 # Convertir les dates des anomalies en format approprié si nécessaire
 dates_anomalies <- as.Date(dates_anomalies)
@@ -1497,7 +1495,7 @@ ggplot(data_ts, aes(x = time(data_ts), y = as.numeric(data_ts))) +
 library(dbscan)
 library(ggplot2)
 library(Rtsne)  # Pour t-SNE
-# library(FactoMineR)  # Pour PCA si vous préférez utiliser PCA
+# library(FactoMineR)  # Pour PCA si on utilise PCA
 
 # Sélectionner uniquement les colonnes numériques de dfclean
 dfclean_numeric <- dfclean[sapply(dfclean, is.numeric)]
