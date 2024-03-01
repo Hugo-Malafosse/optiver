@@ -84,7 +84,6 @@ reduceMemUsage <- function(df, verbose = FALSE) {
 
 ```
 
-
 Import the dataset
 
 ```{r}
@@ -263,7 +262,7 @@ cond <- function(data) {
   return(cond)
 }
 # Application de la fonction `cond` à l'ensemble de données `train`
-# Assurez-vous que l'ensemble de données `train` a été correctement chargé et préparé en R
+# L'ensemble de données `train` a été correctement chargé et préparé en R
 dfclean=cond(data_all)
 pourcentage_na_apres <- sapply(dfclean, function(x) mean(is.na(x))) * 100
 pourcentage_na_apres_df <- as.data.frame(pourcentage_na_apres)
@@ -381,6 +380,7 @@ ggplot(df_mean_var, aes(x = variance, y=mean)) +
   theme(plot.title = element_text(size = 11))
 
 ```
+
 ```{r}
 
 
@@ -661,7 +661,6 @@ weights <- setNames(as.list(weights_vector), seq_along(weights_vector) - 1)
 ```{r}
 
 compute_rolling_averages <- function(df, window_sizes) {
-  # Assurez-vous que df est une matrice ou un data frame avec des valeurs numériques
   df_values <- as.matrix(df)
   num_features <- ncol(df_values)
   
@@ -853,7 +852,7 @@ for(p in c(price1, price2)) {
       time_to_market_close = 540 - seconds_in_bucket
     )
   
-  # Assurez-vous que global_stock_id_feats est défini dans votre environnement
+  # Faut que global_stock_id_feats est défini dans notre environnement
   for (key in names(global_stock_id_feats)) {
     df[[paste0("global_", key)]] <- df[["stock_id"]] %in% global_stock_id_feats[[key]]
   }
@@ -920,7 +919,6 @@ for(p in c(price1, price2)) {
       time_to_market_close = 540 - seconds_in_bucket
     )
   
-  # Assurez-vous que global_stock_id_feats est défini dans votre environnement
   for (key in names(global_stock_id_feats)) {
     df[[paste0("global_", key)]] <- df[["stock_id"]] %in% global_stock_id_feats[[key]]
   }
@@ -1008,7 +1006,6 @@ plot_two_ts(3, 3, data_n, "seconds", "target", 'l')
 plot_two_ts(3, 3, data_n, "near_price_ask_price_wap", "target", 'l')
 ```
 
-
 ```{r}
 plot_two_ts(3, 3, data_n, "wap_rolling_avg_5", "target", 'l')
 plot_two_ts(3, 3, data_n, "wap", "target", 'l')
@@ -1018,7 +1015,6 @@ plot_two_ts(3, 3, data_n, "wap", "target", 'l')
 # FURTHER PREPROCESSING
 
 ## OUTLIER DETECTION
-
 
 # MODELS
 
@@ -1178,9 +1174,6 @@ ggplot(data_plot[data_plot$stock_id==32, ], aes(x = time_id, y = bid_size, color
 
 ```
 
-
-
-
 ```{r}
 # Initialisation d'une liste pour stocker les modèles
 models <- list()
@@ -1273,13 +1266,9 @@ for (features in all_features_to_predict){
 # Affichage des erreurs MAE
 print(mae_errors_pred)
 
-# Vous pouvez ensuite examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
+# Examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
 mean(mae_errors_pred)
 ```
-
-
-
-
 
 ## SOTA MODELS
 
@@ -1318,8 +1307,6 @@ pred_boost <- function(pred){
 
 ```
 
-
-
 ```{r}
 ####### Préparation des données pour LightGBM
 dtrain <- lgb.Dataset(data = as.matrix(train_x), label = train_y)
@@ -1347,11 +1334,10 @@ clipped_predictions <- pred_boost(lightgbm_predictions)
 # Calcul de MAE pour LightGBM
 lightgbm_mae <- mean(abs(test_y - clipped_predictions))
 ```
+
 ```{r}
 print(paste("MAE pour LightGBM:", lightgbm_mae))
 ```
-
-
 
 ```{r}
 data_n_ <- create_data_n(data_all)
@@ -1371,7 +1357,6 @@ test_x <- test_x[, !(names(test_x) %in% c("row_id"))]
 
 ```
 
-
 ```{r}
 ####### Préparation des données pour LightGBM
 dtrain <- lgb.Dataset(data = as.matrix(train_x), label = train_y)
@@ -1399,8 +1384,6 @@ clipped_predictions <- pred_boost(lightgbm_predictions)
 # Calcul de MAE pour LightGBM
 lightgbm_mae <- mean(abs(test_y - clipped_predictions))
 ```
-
-
 
 #GAM
 
@@ -1453,7 +1436,7 @@ for (i in 0:46) {
 # Affichage des erreurs MAE
 print(mae_errors)
 
-# Vous pouvez ensuite examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
+# Examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
 mean(mae_errors)
 ```
 
@@ -1461,7 +1444,6 @@ mean(mae_errors)
 
 
 ```
-
 
 ```{r}
 for (model_gam in models_gam){
@@ -1501,14 +1483,12 @@ mean(abs(test_y - clipped_predictions))
 # Affichage des erreurs MAE
 print(mae_errors)
 
-# Vous pouvez ensuite examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
+# Examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
 mean(mae_errors)
 ```
 
-
-
-
 #STOCKS
+
 ```{r}
 mae_list_stocks <- c()
 
@@ -1585,6 +1565,7 @@ plot(x=final_summary_df$Total_Outliers, y=final_summary_df$score, xlab='Outlier 
 
 
 ```
+
 ```{r}
 model <- lm(score ~ Total_Outliers, data = final_summary_df)
 plot(x=final_summary_df$Total_Outliers, y=final_summary_df$score, xlab='Outlier count', ylab = 'score')
@@ -1598,7 +1579,6 @@ plot(model)
 # The summary includes the R-squared value
 
 ```
-
 
 ```{r}
 print(paste("MAE pour LightGBM:", mae_list_stocks))
@@ -1722,13 +1702,9 @@ clipped_predictions <- pred_boost(lightgbm_predictions)
 lightgbm_mae <- mean(abs(test_y - clipped_predictions))
 ```
 
-
-
 ```{r}
 print(paste("MAE pour LightGBM without worst stocks:", lightgbm_mae))
 ```
-
-
 
 ```{r}
 
@@ -1811,7 +1787,6 @@ plot(1:100, mae_two_models)
 abline(h=5.74)
 ```
 
-
 ```{r}
 ####### XGBoost
 dtrain <- xgb.DMatrix(data = as.matrix(train_x), label = train_y)
@@ -1844,7 +1819,6 @@ test_x <- df_test[, colnames(df_test) != "target"]
 train_x <- train_x[, !(names(train_x) %in% c("row_id"))]
 test_x <- test_x[, !(names(test_x) %in% c("row_id"))]
 ```
-
 
 ```{r}
 # Initialisation d'une liste pour stocker les modèles
@@ -1903,7 +1877,7 @@ for (i in 0:46) {
 # Affichage des erreurs MAE
 print(mae_errors)
 
-# Vous pouvez ensuite examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
+# Examiner les erreurs MAE pour évaluer la performance de chaque modèle sur son ensemble de test correspondant.
 mean(mae_errors)
 ```
 
@@ -1943,7 +1917,6 @@ most_important_features<-setdiff(most_important_features,"far_price_rolling_avg_
 ```{r}
 
 
-```{r}
 # Initialisation d'une liste pour stocker les modèles
 models_new <- list()
 

@@ -676,7 +676,6 @@ predict_and_replace_NA <- function(data, target_col) {
 }
 
 
-# Supposons que votre dataframe s'appelle 'df'
 df00_filtered <- data_all[data_all$stock_id < 10, ]
 
 # Application de la fonction pour 'far_price' et 'near_price'
@@ -688,8 +687,7 @@ head(data_3)
 
 
 
-# Supposons que df soit votre DataFrame
-# df <- read.csv("chemin_vers_votre_dataframe.csv")
+
 
 # Fonction pour prédire et remplacer les valeurs NA d'une colonne cible
 predict_and_replace_NA <- function(df, target_col) {
@@ -864,7 +862,7 @@ ajout_detect_outliers <- function(data_frame) {
   return(data_frame)
 }
 
-# Appliquer la fonction au dataframe 'data_all' (remplacer 'data_all' par le nom de votre dataframe)
+# Appliquer la fonction au dataframe 'data_all' 
 dfclean_outliers <- ajout_detect_outliers(dfclean)
 print(head(dfclean_outliers))
 
@@ -1037,7 +1035,6 @@ detect_outliers <- function(data_frame) {
 }
 
 # Exemple d'utilisation avec le dataframe `data_all`
-# Remplacer `data_all` par le nom de votre dataframe
 outlier_flags <- detect_outliers(dfclean)
 print(outlier_flags)
 
@@ -1285,8 +1282,6 @@ pheatmap(outliers_matrix, color = colorRampPalette(c("white", "red"))(n))
 
 
 
-# Supposons que outliers_marked est votre dataframe marquant les outliers
-# Par exemple, outliers_marked$col1 est TRUE si la valeur dans col1 est un outlier
 
 # Initialiser une liste pour stocker les résultats
 triplets_outliers_counts <- list()
@@ -1446,8 +1441,7 @@ print(mae)
 
 
 
-# Supposons que 'data_ts' est votre série temporelle des données financières
-# et que 'arima_model' est le modèle ARIMA ajusté à 'data_ts'
+
 
 # Calcul des résidus du modèle ARIMA
 residus_arima <- residuals(arima_model)

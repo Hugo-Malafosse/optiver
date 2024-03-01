@@ -1943,7 +1943,6 @@ print(correlations_df_sorted)
 
 
 
-# Présumons que dfclean_num est votre dataframe et que "target" est le nom de votre variable cible
 
 # Initialisation d'un vecteur pour stocker les corrélations de Spearman
 target_correlations_spearman <- numeric(length = ncol(dfclean_num) - 1) # -1 pour exclure la colonne target elle-même

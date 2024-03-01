@@ -936,7 +936,6 @@ detect_outliers <- function(data_frame) {
 }
 
 # Exemple d'utilisation avec le dataframe `data_all`
-# Remplacer `data_all` par le nom de votre dataframe
 outlier_flags <- detect_outliers(dfclean)
 outlier_flags$stock_id <- dfclean$stock_id
 print(outlier_flags)
@@ -1101,8 +1100,6 @@ pheatmap(outliers_matrix, color = colorRampPalette(c("white", "red"))(n))
 
 
 
-# Supposons que outliers_marked est votre dataframe marquant les outliers
-# Par exemple, outliers_marked$col1 est TRUE si la valeur dans col1 est un outlier
 
 # Initialiser une liste pour stocker les résultats
 triplets_outliers_counts <- list()
